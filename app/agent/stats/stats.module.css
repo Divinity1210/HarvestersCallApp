@@ -1,0 +1,137 @@
+.page {
+  padding: var(--space-6) var(--space-8);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--text-primary), var(--color-accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-top: var(--space-1);
+}
+
+.headerActions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.periodTabs {
+  display: flex;
+  gap: var(--space-1);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: var(--space-1);
+  border: 1px solid var(--border-subtle);
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-8);
+}
+
+.recentSection {
+  margin-top: var(--space-6);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-4);
+}
+
+.callList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.callRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-4) var(--space-5) !important;
+  transition: transform 0.15s ease;
+}
+
+.callRow:hover {
+  transform: translateX(4px);
+}
+
+.callInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.callName {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+}
+
+.callDate {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}
+
+.callMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.callDuration {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.callScore {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: var(--space-4);
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .callRow {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .callMeta {
+    flex-wrap: wrap;
+  }
+}

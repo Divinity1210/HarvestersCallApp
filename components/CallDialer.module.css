@@ -1,0 +1,193 @@
+.dialer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  animation: fadeIn 0.4s ease;
+}
+
+.title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.deviceStatus {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-hover);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.statusReady {
+  background: var(--color-success);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+}
+
+.statusNotReady {
+  background: var(--color-warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.statusText {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Call Display */
+.callDisplay {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8) var(--space-4);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: all var(--transition-base);
+}
+
+.callConnecting {
+  border-color: var(--color-warning);
+  box-shadow: 0 0 30px rgba(245, 158, 11, 0.1);
+}
+
+.callActive {
+  border-color: var(--color-success);
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+}
+
+.callRing {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80px;
+  height: 80px;
+  border: 2px solid var(--color-success);
+  border-radius: 50%;
+  animation: pulseRing 2s ease-out infinite;
+}
+
+.callRing2 {
+  composes: callRing;
+  animation-delay: 0.6s;
+}
+
+.callAvatar {
+  font-size: 2.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.callInfo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  position: relative;
+  z-index: 1;
+}
+
+.callName {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.callStatus {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+/* Timer */
+.timer {
+  text-align: center;
+  font-size: var(--text-4xl);
+  font-weight: 800;
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 20px var(--color-accent-glow);
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.dialBtn, .endBtn {
+  width: 100%;
+}
+
+.dialBtn {
+  font-size: var(--text-lg) !important;
+  padding: var(--space-5) var(--space-8) !important;
+}
+
+.endBtn {
+  animation: none;
+}
+
+.muteBtn {
+  width: 100%;
+}
+
+.endedMessage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-info-bg);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--color-info);
+  font-weight: 500;
+}
+
+/* Quick Actions */
+.quickActions {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--space-4);
+}
+
+.quickLabel {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-bottom: var(--space-2);
+}
+
+.quickBtns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Error */
+.error {
+  padding: var(--space-3);
+  background: var(--color-danger-bg);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+}

@@ -1,0 +1,48 @@
+.player {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-card-solid);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.playBtn {
+  flex-shrink: 0;
+  font-size: var(--text-lg);
+}
+
+.progressContainer {
+  flex: 1;
+  cursor: pointer;
+  padding: var(--space-2) 0;
+}
+
+.progressTrack {
+  height: 4px;
+  background: var(--surface-input);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-hover));
+  border-radius: var(--radius-full);
+  transition: width 0.1s linear;
+}
+
+.time {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.speedBtn {
+  font-family: var(--font-mono) !important;
+  font-size: var(--text-xs) !important;
+  flex-shrink: 0;
+}

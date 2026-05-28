@@ -1,0 +1,116 @@
+.viewer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section {
+  padding: var(--space-4);
+  background: var(--surface-hover);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.sectionTitle {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-accent);
+  margin-bottom: var(--space-3);
+}
+
+.summaryText {
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  color: var(--text-primary);
+}
+
+/* Flags */
+.flagList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.flag {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.flagHigh {
+  background: var(--color-danger-bg);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.flagMedium {
+  background: var(--color-warning-bg);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.flagType {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-danger);
+}
+
+.flagMedium .flagType {
+  color: var(--color-warning);
+}
+
+.flagDetail {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+/* Steps */
+.stepList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.step {
+  font-size: var(--text-sm);
+  color: var(--color-success);
+  font-weight: 500;
+}
+
+/* Testimony */
+.testimony {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.7;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-accent-glow);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  font-style: italic;
+}
+
+/* Transcript */
+.transcript {
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.8;
+}
+
+.transcriptLine {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-1);
+}
+
+.speaker0 {
+  background: rgba(59, 130, 246, 0.06);
+  border-left: 2px solid var(--color-info);
+}
+
+.speaker1 {
+  background: rgba(16, 185, 129, 0.06);
+  border-left: 2px solid var(--color-success);
+}

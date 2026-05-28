@@ -1,0 +1,167 @@
+.page {
+  padding: var(--space-6) var(--space-8);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.title {
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--text-primary), var(--color-accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-top: var(--space-1);
+}
+
+.headerActions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+
+.filters {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.agentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-4);
+}
+
+.agentCard {
+  padding: var(--space-5) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.agentCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.agentCard.inactive {
+  opacity: 0.6;
+}
+
+.agentHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.agentAvatar {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-accent), #c49535);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: var(--text-lg);
+  color: var(--color-bg);
+  flex-shrink: 0;
+}
+
+.agentInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.agentName {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+}
+
+.agentRole {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.agentMeta {
+  display: flex;
+  gap: var(--space-6);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-3);
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.metaLabel {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metaValue {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.agentActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.roleEditor {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+  align-items: center;
+}
+
+.roleEditor .form-select {
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: var(--space-4);
+  }
+
+  .agentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statsRow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

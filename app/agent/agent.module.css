@@ -1,0 +1,130 @@
+.workspace {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--navbar-height));
+  overflow: hidden;
+}
+
+/* Stats Bar */
+.statsBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-6);
+  background: var(--surface-card-solid);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.statsLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.campaignSelect {
+  max-width: 260px;
+  padding: var(--space-2) var(--space-3) !important;
+  font-size: var(--text-sm) !important;
+}
+
+.campaignName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.campaignDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success);
+  animation: callPulse 2s ease-in-out infinite;
+}
+
+.statsRight {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.statChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-1) var(--space-4);
+  background: var(--surface-hover);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.statChipLabel {
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+.statChipValue {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Workspace Grid */
+.workspaceGrid {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.leftPanel {
+  border-right: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: rgba(10, 22, 40, 0.5);
+}
+
+.centerPanel {
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+
+.rightPanel {
+  border-left: 1px solid var(--border-subtle);
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: rgba(10, 22, 40, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .workspaceGrid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .leftPanel,
+  .rightPanel {
+    border-right: none;
+    border-left: none;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .statsRight {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .statsBar {
+    padding: var(--space-2) var(--space-4);
+  }
+}
