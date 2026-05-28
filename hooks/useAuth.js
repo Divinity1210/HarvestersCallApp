@@ -43,6 +43,12 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     // Get initial session
     const initAuth = async () => {
+      // Fallback timeout: if Supabase hangs, force loading to false after 8s
+      const timeoutId = setTimeout(() => {
+        console.warn('Auth init timed out, forcing loading to false');
+        setLoading(false);
+      }, 8000);
+
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
@@ -53,6 +59,7 @@ export function AuthProvider({ children }) {
         console.error('Auth init error:', err);
         setError(err.message);
       } finally {
+        clearTimeout(timeoutId);
         setLoading(false);
       }
     };
