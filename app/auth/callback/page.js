@@ -6,11 +6,12 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
+import { Suspense } from 'react';
+
 /**
- * /auth/callback — handles the OAuth redirect from Google.
- * Supabase PKCE flow sends the auth code as a URL query parameter.
+ * The inner content that uses useSearchParams
  */
-export default function AuthCallbackPage() {
+function CallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState('Completing sign-in...');
@@ -99,5 +100,21 @@ export default function AuthCallbackPage() {
       <div className="spinner spinner-lg"></div>
       <p style={{ color: 'var(--text-secondary)' }}>{status}</p>
     </div>
+  );
+}
+
+/**
+ * /auth/callback — handles the OAuth redirect from Google.
+ * Supabase PKCE flow sends the auth code as a URL query parameter.
+ */
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: 'var(--bg-primary)' }}>
+        <div className="spinner spinner-lg"></div>
+      </div>
+    }>
+      <CallbackContent />
+    </Suspense>
   );
 }
