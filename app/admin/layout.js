@@ -2,7 +2,7 @@ import Navbar from '@/components/Navbar';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 export const metadata = {
-  title: 'Admin Dashboard — NLP Connect',
+  title: 'Admin Dashboard — Harvesters Call App',
   description: 'QA command center for monitoring agent performance and call quality.',
 };
 

@@ -2,7 +2,7 @@ import Navbar from '@/components/Navbar';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 export const metadata = {
-  title: 'Agent Workspace — NLP Connect',
+  title: 'Agent Workspace — Harvesters Call App',
   description: 'Call center agent workspace for making follow-up calls.',
 };
 
