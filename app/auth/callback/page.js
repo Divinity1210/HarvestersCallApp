@@ -24,7 +24,7 @@ function CallbackContent() {
         const errorDescription = searchParams.get('error_description');
         if (errorParam) {
           console.error('OAuth error:', errorParam, errorDescription);
-          router.push(`/?error=${encodeURIComponent(errorDescription || errorParam)}`);
+          window.location.replace(`/?error=${encodeURIComponent(errorDescription || errorParam)}`);
           return;
         }
 
@@ -35,7 +35,7 @@ function CallbackContent() {
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) {
             console.error('Code exchange error:', error);
-            router.push('/?error=auth_failed');
+            window.location.replace('/?error=auth_failed');
             return;
           }
           
@@ -51,9 +51,9 @@ function CallbackContent() {
               .single();
 
             if (profile?.role === 'admin' || profile?.role === 'super_admin') {
-              router.push('/admin');
+              window.location.replace('/admin');
             } else {
-              router.push('/agent');
+              window.location.replace('/agent');
             }
             return;
           }
@@ -69,18 +69,18 @@ function CallbackContent() {
             .single();
 
           if (profile?.role === 'admin' || profile?.role === 'super_admin') {
-            router.push('/admin');
+            window.location.replace('/admin');
           } else {
-            router.push('/agent');
+            window.location.replace('/agent');
           }
         } else {
           // No session found
           console.warn('No session found after callback');
-          router.push('/?error=no_session');
+          window.location.replace('/?error=no_session');
         }
       } catch (err) {
         console.error('Callback error:', err);
-        router.push('/?error=callback_failed');
+        window.location.replace('/?error=callback_failed');
       }
     };
 
