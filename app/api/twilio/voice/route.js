@@ -63,11 +63,26 @@ export async function POST(request) {
       method: 'POST',
     });
 
+    // Normalize phone numbers (e.g., convert UK 07... to +447...)
+    let formattedNumber = lead.phone_number;
+    if (formattedNumber.startsWith('07') && formattedNumber.length === 11) {
+      formattedNumber = '+44' + formattedNumber.substring(1);
+    } else if (!formattedNumber.startsWith('+')) {
+      // If it's something else without a plus, try prepending +44 just in case
+      // or assume it's a raw international format
+      // For Nigerian numbers starting with 8 or 9 (e.g., 803...), add +234
+      if (/^[789]\d{9}$/.test(formattedNumber)) {
+        formattedNumber = '+234' + formattedNumber;
+      } else {
+        formattedNumber = '+' + formattedNumber;
+      }
+    }
+
     const number = dial.number({
       statusCallback: `${getBaseUrl(request)}/api/twilio/call-status`,
       statusCallbackEvent: 'initiated ringing answered completed',
       statusCallbackMethod: 'POST',
-    }, lead.phone_number);
+    }, formattedNumber);
 
     // Update call record with Twilio SID
     if (callId) {

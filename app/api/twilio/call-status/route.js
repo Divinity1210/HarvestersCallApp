@@ -65,9 +65,15 @@ export async function POST(request) {
       // when the recording is ready
     }
 
-    return NextResponse.json({ success: true });
+    // Return empty TwiML so Twilio knows to just end the call silently without playing an error
+    return new NextResponse('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
+      headers: { 'Content-Type': 'text/xml' },
+    });
   } catch (err) {
     console.error('Call status webhook error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return new NextResponse('<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>', {
+      headers: { 'Content-Type': 'text/xml' },
+      status: 200 // Return 200 so Twilio doesn't complain, but hang up
+    });
   }
 }
