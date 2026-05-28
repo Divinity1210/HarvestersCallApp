@@ -2,11 +2,10 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-
-import { Suspense } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 
 /**
  * The inner content that uses useSearchParams
