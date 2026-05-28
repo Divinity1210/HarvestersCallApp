@@ -177,6 +177,28 @@ export default function AgentDashboard() {
 
         {/* Center Panel: Script or Results */}
         <div className={styles.centerPanel}>
+          {/* Toggle between Script and Results when results exist */}
+          {lead.currentLead && (showResults || lead.qaResults) && (
+            <div style={{
+              display: 'flex',
+              gap: 'var(--space-2)',
+              marginBottom: 'var(--space-3)',
+            }}>
+              <button
+                className={`btn ${!showResults ? 'btn-primary' : 'btn-ghost'} btn-sm`}
+                onClick={() => setShowResults(false)}
+              >
+                📋 Call Script
+              </button>
+              <button
+                className={`btn ${showResults ? 'btn-primary' : 'btn-ghost'} btn-sm`}
+                onClick={() => setShowResults(true)}
+              >
+                🤖 AI Results
+              </button>
+            </div>
+          )}
+
           {showResults ? (
             <AIResultsPanel
               qaResults={lead.qaResults}
