@@ -113,3 +113,8 @@
   padding-left: var(--space-4);
   font-weight: 500;
 }
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
