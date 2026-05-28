@@ -1,5 +1,5 @@
 /* ============================================
-   NLP Connect — Design System
+   Harvesters Call App — Design System
    Harvesters International Christian Centre
    ============================================ */
 
@@ -12,10 +12,10 @@
   --color-primary: #0A1628;
   --color-primary-light: #111B2E;
   --color-primary-lighter: #172237;
-  --color-accent: #D4A843;
-  --color-accent-hover: #E0BC5E;
-  --color-accent-glow: rgba(212, 168, 67, 0.15);
-  --color-accent-glow-strong: rgba(212, 168, 67, 0.3);
+  --color-accent: #E8822A;
+  --color-accent-hover: #F09540;
+  --color-accent-glow: rgba(232, 130, 42, 0.15);
+  --color-accent-glow-strong: rgba(232, 130, 42, 0.3);
 
   /* Semantic Colors */
   --color-success: #10B981;
@@ -38,9 +38,9 @@
   --surface-input-focus: rgba(23, 34, 55, 0.9);
 
   /* Borders */
-  --border-subtle: rgba(212, 168, 67, 0.08);
-  --border-default: rgba(212, 168, 67, 0.15);
-  --border-strong: rgba(212, 168, 67, 0.3);
+  --border-subtle: rgba(232, 130, 42, 0.08);
+  --border-default: rgba(232, 130, 42, 0.15);
+  --border-strong: rgba(232, 130, 42, 0.3);
   --border-input: rgba(148, 163, 184, 0.2);
   --border-input-focus: var(--color-accent);
 
@@ -99,7 +99,7 @@
 
   /* Glass */
   --glass-bg: rgba(17, 27, 46, 0.6);
-  --glass-border: rgba(212, 168, 67, 0.1);
+  --glass-border: rgba(232, 130, 42, 0.1);
   --glass-blur: blur(16px);
 
   /* Layout */
@@ -181,12 +181,12 @@ img {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(212, 168, 67, 0.2);
+  background: rgba(232, 130, 42, 0.2);
   border-radius: var(--radius-full);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(212, 168, 67, 0.35);
+  background: rgba(232, 130, 42, 0.35);
 }
 
 /* --- Animations --- */
@@ -319,7 +319,7 @@ img {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-accent), #C49535);
+  background: linear-gradient(135deg, var(--color-accent), #C4651E);
   color: var(--text-inverse);
   box-shadow: 0 2px 12px var(--color-accent-glow);
 }

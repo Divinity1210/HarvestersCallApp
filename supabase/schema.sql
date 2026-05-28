@@ -214,23 +214,24 @@ CREATE POLICY "Admins can manage QA results"
 -- ============================================
 -- AUTO-CREATE PROFILE ON SIGNUP (TRIGGER)
 -- ============================================
-CREATE OR REPLACE FUNCTION handle_new_user()
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO agent_profiles (id, full_name, role)
+  INSERT INTO public.agent_profiles (id, full_name, role)
   VALUES (
     NEW.id,
     COALESCE(
       NEW.raw_user_meta_data->>'full_name',
       NEW.raw_user_meta_data->>'name',        -- Google OAuth uses 'name'
       NEW.raw_user_meta_data->>'display_name',
-      NEW.email
+      NEW.email,
+      'Agent ' || substr(NEW.id::text, 1, 8)
     ),
     'agent'
   );
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Drop the trigger if it exists, then create
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;

@@ -22,7 +22,7 @@
   right: -10%;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, rgba(212, 168, 67, 0.08) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(232, 130, 42, 0.08) 0%, transparent 70%);
   border-radius: 50%;
   animation: float 8s ease-in-out infinite;
 }
@@ -42,8 +42,8 @@
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(rgba(212, 168, 67, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(212, 168, 67, 0.03) 1px, transparent 1px);
+    linear-gradient(rgba(232, 130, 42, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(232, 130, 42, 0.03) 1px, transparent 1px);
   background-size: 60px 60px;
   pointer-events: none;
 }
@@ -53,7 +53,7 @@
   background: rgba(17, 27, 46, 0.7);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(212, 168, 67, 0.12);
+  border: 1px solid rgba(232, 130, 42, 0.12);
   border-radius: var(--radius-xl);
   padding: var(--space-10);
   width: 100%;
@@ -63,7 +63,7 @@
   animation: fadeInUp 0.6s ease;
   box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.4),
-    0 0 80px rgba(212, 168, 67, 0.05);
+    0 0 80px rgba(232, 130, 42, 0.05);
 }
 
 .loginCard::before {

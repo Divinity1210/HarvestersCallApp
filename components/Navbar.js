@@ -11,21 +11,11 @@ export default function Navbar() {
     <nav className={styles.navbar}>
       <div className={styles.navLeft}>
         <div className={styles.logo}>
-          <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="12" fill="url(#navGrad)"/>
-            <path d="M12 20C12 15.5 15.5 12 20 12C24.5 12 28 15.5 28 20" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-            <path d="M16 20C16 17.8 17.8 16 20 16C22.2 16 24 17.8 24 20" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-            <circle cx="20" cy="20" r="2" fill="white"/>
-            <path d="M20 22V28" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-            <path d="M17 26H23" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-            <defs>
-              <linearGradient id="navGrad" x1="0" y1="0" x2="40" y2="40">
-                <stop stopColor="#D4A843"/>
-                <stop offset="1" stopColor="#C49535"/>
-              </linearGradient>
-            </defs>
-          </svg>
-          <span className={styles.logoText}>{APP_NAME}</span>
+          <img 
+            src="/harvesters-logo.svg" 
+            alt="Harvesters" 
+            style={{ width: 120, height: 'auto', filter: 'brightness(1.1)' }}
+          />
         </div>
       </div>
 

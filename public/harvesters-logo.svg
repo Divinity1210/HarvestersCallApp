@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 120" fill="none">
+  <!-- Stylized Cross -->
+  <g transform="translate(70, 5)">
+    <!-- Main diagonal stroke of cross -->
+    <path d="M30 0 C28 15, 35 25, 30 50 C28 60, 25 70, 22 80" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <!-- Horizontal arm -->
+    <path d="M5 25 C15 23, 25 22, 45 20 C50 19, 55 20, 58 22" stroke="white" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <!-- Artistic swoosh at top -->
+    <path d="M20 8 C25 2, 35 -2, 50 5 C55 8, 48 12, 40 10" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  </g>
+  <!-- HARVESTERS text -->
+  <text x="100" y="100" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="800" letter-spacing="4" fill="white">HARVESTERS</text>
+  <!-- Subtitle -->
+  <text x="100" y="115" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="6" font-weight="400" letter-spacing="3" fill="rgba(255,255,255,0.6)">INTERNATIONAL CHRISTIAN CENTRE</text>
+</svg>

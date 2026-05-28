@@ -58,25 +58,14 @@ export default function LoginPage() {
       <div className={styles.loginCard}>
         {/* Logo & Branding */}
         <div className={styles.logoSection}>
-          <div className={styles.logoIcon}>
-            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-              <rect width="40" height="40" rx="12" fill="url(#grad1)"/>
-              <path d="M12 20C12 15.5 15.5 12 20 12C24.5 12 28 15.5 28 20" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              <path d="M16 20C16 17.8 17.8 16 20 16C22.2 16 24 17.8 24 20" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              <circle cx="20" cy="20" r="2" fill="white"/>
-              <path d="M20 22V28" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              <path d="M17 26H23" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              <defs>
-                <linearGradient id="grad1" x1="0" y1="0" x2="40" y2="40">
-                  <stop stopColor="#D4A843"/>
-                  <stop offset="1" stopColor="#C49535"/>
-                </linearGradient>
-              </defs>
-            </svg>
-          </div>
+          <img 
+            src="/harvesters-logo.svg" 
+            alt="Harvesters International Christian Centre" 
+            className={styles.logoImage}
+            style={{ width: 180, height: 'auto', marginBottom: 'var(--space-4)' }}
+          />
           <h1 className={styles.appName}>{APP_NAME}</h1>
-          <p className={styles.appSubtitle}>AI-Powered QA Call Center</p>
-          <p className={styles.churchName}>Harvesters International Christian Centre UK</p>
+          <p className={styles.appSubtitle}>AI-Powered Follow-Up Call System</p>
         </div>
 
         {/* Login Form */}
