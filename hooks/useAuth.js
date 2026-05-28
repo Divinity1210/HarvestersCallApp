@@ -41,45 +41,42 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // Get initial session
-    const initAuth = async () => {
-      // Fallback timeout: if Supabase hangs, force loading to false after 8s
-      const timeoutId = setTimeout(() => {
-        console.warn('Auth init timed out, forcing loading to false');
-        setLoading(false);
-      }, 8000);
+    let mounted = true;
 
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          setUser(session.user);
-          await fetchProfile(session.user.id);
-        }
-      } catch (err) {
-        console.error('Auth init error:', err);
-        setError(err.message);
-      } finally {
-        clearTimeout(timeoutId);
-        setLoading(false);
-      }
-    };
-
-    initAuth();
-
-    // Listen for auth changes
+    // Use onAuthStateChange as the single source of truth.
+    // It fires immediately with INITIAL_SESSION from local storage (no network call),
+    // then again on any sign-in/sign-out events.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_IN' && session?.user) {
+        if (!mounted) return;
+
+        if (session?.user) {
           setUser(session.user);
-          await fetchProfile(session.user.id);
-        } else if (event === 'SIGNED_OUT') {
+          // Only fetch profile if we don't already have one for this user
+          if (!profile || profile.id !== session.user.id) {
+            await fetchProfile(session.user.id);
+          }
+        } else {
           setUser(null);
           setProfile(null);
         }
+        setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
+    // Safety fallback: if onAuthStateChange never fires (shouldn't happen), force loading off
+    const safetyTimeout = setTimeout(() => {
+      if (mounted) {
+        console.warn('Auth listener safety timeout reached');
+        setLoading(false);
+      }
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(safetyTimeout);
+      subscription.unsubscribe();
+    };
   }, [fetchProfile]);
 
   /** Sign in with email and password */
