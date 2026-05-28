@@ -12,80 +12,45 @@ import { Suspense } from 'react';
  * The inner content that uses useSearchParams
  */
 function CallbackContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, profile, loading } = useAuth();
   const [status, setStatus] = useState('Completing sign-in...');
 
   useEffect(() => {
-    const handleCallback = async () => {
-      try {
-        // Check for error in URL params
-        const errorParam = searchParams.get('error');
-        const errorDescription = searchParams.get('error_description');
-        if (errorParam) {
-          console.error('OAuth error:', errorParam, errorDescription);
-          window.location.replace(`/?error=${encodeURIComponent(errorDescription || errorParam)}`);
-          return;
-        }
+    // 1. Check for explicit OAuth errors
+    const errorParam = searchParams.get('error');
+    const errorDescription = searchParams.get('error_description');
+    if (errorParam) {
+      console.error('OAuth error:', errorParam, errorDescription);
+      window.location.replace(`/?error=${encodeURIComponent(errorDescription || errorParam)}`);
+      return;
+    }
 
-        // Check for auth code in URL (PKCE flow)
-        const code = searchParams.get('code');
-        if (code) {
-          setStatus('Exchanging auth code...');
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) {
-            console.error('Code exchange error:', error);
-            window.location.replace('/?error=auth_failed');
-            return;
-          }
-          
-          if (data?.session) {
-            setStatus('Loading your profile...');
-            // Wait a moment for the DB trigger to create the profile
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            const { data: profile } = await supabase
-              .from('agent_profiles')
-              .select('role')
-              .eq('id', data.session.user.id)
-              .single();
-
-            if (profile?.role === 'admin' || profile?.role === 'super_admin') {
-              window.location.replace('/admin');
-            } else {
-              window.location.replace('/agent');
-            }
-            return;
-          }
-        }
-
-        // Fallback: check if session already exists (e.g. implicit flow)
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const { data: profile } = await supabase
-            .from('agent_profiles')
-            .select('role')
-            .eq('id', session.user.id)
-            .single();
-
-          if (profile?.role === 'admin' || profile?.role === 'super_admin') {
-            window.location.replace('/admin');
-          } else {
-            window.location.replace('/agent');
-          }
-        } else {
-          // No session found
-          console.warn('No session found after callback');
-          window.location.replace('/?error=no_session');
-        }
-      } catch (err) {
-        console.error('Callback error:', err);
-        window.location.replace('/?error=callback_failed');
+    // 2. If we have a user and profile, redirect to the correct dashboard
+    if (user && profile) {
+      setStatus('Loading your dashboard...');
+      if (profile.role === 'admin' || profile.role === 'super_admin') {
+        window.location.replace('/admin');
+      } else {
+        window.location.replace('/agent');
       }
-    };
+      return;
+    }
 
-    handleCallback();
-  }, [router, searchParams]);
+    // 3. If loading is finished but we still don't have a user, something might have failed silently
+    if (!loading && !user) {
+      // Give the Supabase client a small buffer to finish exchanging the code in the background
+      const timeout = setTimeout(() => {
+        console.warn('No session found after callback timeout');
+        window.location.replace('/?error=no_session');
+      }, 3000);
+      return () => clearTimeout(timeout);
+    }
+    
+    // Otherwise, just wait. Supabase detectSessionInUrl is handling the code exchange.
+    setStatus('Exchanging auth code...');
+
+  }, [user, profile, loading, searchParams]);
 
   return (
     <div style={{
