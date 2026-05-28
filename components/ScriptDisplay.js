@@ -13,6 +13,8 @@ export default function ScriptDisplay({ scriptTemplate, attendeeName, agentName,
     if (!scriptTemplate) return null;
 
     let script = scriptTemplate;
+    // Normalize escaped newlines (from database JSON) to real newlines
+    script = script.replace(/\\n/g, '\n');
     script = script.replace(/\{\{attendee_name\}\}/gi, attendeeName || '[Attendee]');
     script = script.replace(/\{\{agent_name\}\}/gi, agentName || '[Agent]');
     script = script.replace(/\{\{date\}\}/gi, new Date().toLocaleDateString('en-US', {

@@ -42,6 +42,13 @@ export function useCall() {
       });
 
       device.on('ready', () => {
+        console.log('Twilio Device ready');
+        setDeviceReady(true);
+        setCallError(null);
+      });
+
+      device.on('registered', () => {
+        console.log('Twilio Device registered');
         setDeviceReady(true);
         setCallError(null);
       });
