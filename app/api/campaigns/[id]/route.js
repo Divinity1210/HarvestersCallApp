@@ -53,40 +53,18 @@ export async function DELETE(request, { params }) {
     const { id } = await params;
     const supabase = createAdminClient();
 
-    // Check if campaign has any calls
-    const { count } = await supabase
-      .from('calls')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', id);
+    // Always perform a hard delete
+    // First delete leads (calls will have their campaign_id set to NULL automatically due to ON DELETE SET NULL)
+    await supabase.from('leads').delete().eq('campaign_id', id);
+    // Then delete campaign
+    const { error } = await supabase.from('campaigns').delete().eq('id', id);
+    if (error) throw error;
 
-    if (count > 0) {
-      // Soft delete — archive the campaign
-      const { error } = await supabase
-        .from('campaigns')
-        .update({ status: 'completed' })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      return NextResponse.json({
-        success: true,
-        message: `Campaign archived (has ${count} calls). Use status filter to find it.`,
-        archived: true,
-      });
-    } else {
-      // Hard delete — no calls, safe to remove
-      // First delete leads
-      await supabase.from('leads').delete().eq('campaign_id', id);
-      // Then delete campaign
-      const { error } = await supabase.from('campaigns').delete().eq('id', id);
-      if (error) throw error;
-
-      return NextResponse.json({
-        success: true,
-        message: 'Campaign and its leads permanently deleted.',
-        archived: false,
-      });
-    }
+    return NextResponse.json({
+      success: true,
+      message: 'Campaign and its leads permanently deleted.',
+      archived: false,
+    });
   } catch (err) {
     console.error('Campaign delete error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
