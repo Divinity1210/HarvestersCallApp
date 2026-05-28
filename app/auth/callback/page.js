@@ -39,7 +39,6 @@ function CallbackContent() {
 
     // 3. If loading is finished but we still don't have a user, something might have failed silently
     if (!loading && !user) {
-      // Give the Supabase client a small buffer to finish exchanging the code in the background
       const timeout = setTimeout(() => {
         console.warn('No session found after callback timeout');
         window.location.replace('/?error=no_session');
@@ -47,10 +46,24 @@ function CallbackContent() {
       return () => clearTimeout(timeout);
     }
     
-    // Otherwise, just wait. Supabase detectSessionInUrl is handling the code exchange.
-    setStatus('Exchanging auth code...');
+    // 4. If we have a user but NO profile, the Supabase trigger failed to create the profile!
+    if (!loading && user && !profile) {
+      setStatus('Finalizing account...');
+      const timeout = setTimeout(() => {
+        window.location.replace('/?error=Profile creation failed. Did you run the SQL trigger fix in Supabase?');
+      }, 4000);
+      return () => clearTimeout(timeout);
+    }
+    
+    // 5. Global fallback timeout in case getSession hangs completely
+    const globalTimeout = setTimeout(() => {
+      if (status === 'Completing sign-in...') {
+         window.location.replace('/?error=timeout_exchanging_code');
+      }
+    }, 8000);
+    return () => clearTimeout(globalTimeout);
 
-  }, [user, profile, loading, searchParams]);
+  }, [user, profile, loading, searchParams, status]);
 
   return (
     <div style={{
