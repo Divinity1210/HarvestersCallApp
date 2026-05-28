@@ -11,6 +11,7 @@ export async function POST(request) {
     const formData = await request.formData();
     const callSid = formData.get('CallSid');
     const callStatus = formData.get('CallStatus');
+    const dialCallStatus = formData.get('DialCallStatus');
     const timestamp = formData.get('Timestamp');
     const duration = formData.get('CallDuration');
 
@@ -20,12 +21,15 @@ export async function POST(request) {
 
     const supabase = createAdminClient();
 
+    // Use DialCallStatus if it exists (for immediate dial failures), otherwise use CallStatus
+    const effectiveStatus = dialCallStatus || callStatus;
+
     // Build the update payload based on call status
     const updates = {
-      call_status: callStatus,
+      call_status: effectiveStatus,
     };
 
-    switch (callStatus) {
+    switch (effectiveStatus) {
       case 'ringing':
         // Call is ringing at the attendee's end
         break;
