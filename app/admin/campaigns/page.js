@@ -73,20 +73,28 @@ export default function CampaignsPage() {
   const handleCreate = async (e) => {
     e.preventDefault();
 
-    const { error } = await supabase.from('campaigns').insert({
-      name: form.name,
-      description: form.description,
-      script_template: form.scriptTemplate,
-      next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
-      consent_message: form.consentMessage,
-      consent_mode: form.consentMode,
-      retention_days: parseInt(form.retentionDays) || 30,
-    });
+    try {
+      const { error } = await supabase.from('campaigns').insert({
+        name: form.name,
+        description: form.description,
+        script_template: form.scriptTemplate,
+        next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
+        consent_message: form.consentMessage,
+        consent_mode: form.consentMode,
+        retention_days: parseInt(form.retentionDays) || 30,
+      });
 
-    if (!error) {
-      setShowCreate(false);
-      fetchCampaigns();
-      setForm(prev => ({ ...prev, name: '', description: '' }));
+      if (error) {
+        console.error('Error creating campaign:', error);
+        alert(`Error creating campaign: ${error.message}`);
+      } else {
+        setShowCreate(false);
+        fetchCampaigns();
+        setForm(prev => ({ ...prev, name: '', description: '' }));
+      }
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      alert(`Unexpected error: ${err.message}`);
     }
   };
 
@@ -341,7 +349,7 @@ export default function CampaignsPage() {
       {/* Create Campaign Modal */}
       {showCreate && (
         <div className="modal-overlay" onClick={() => setShowCreate(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 700, maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="modal-header">
               <h2 className="modal-title">➕ Create Campaign</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => setShowCreate(false)}>✕</button>

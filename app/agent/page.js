@@ -104,13 +104,20 @@ export default function AgentDashboard() {
     }
   };
 
-  /** Handle no-answer / skip */
   const handleSkip = async (disposition) => {
+    let success = true;
     if (lead.currentCall?.id) {
-      await lead.submitNoAnswer(lead.currentCall.id, disposition);
+      success = await lead.submitNoAnswer(lead.currentCall.id, disposition);
     }
-    setShowResults(false);
-    call.resetCall();
+    
+    if (success) {
+      setShowResults(false);
+      call.resetCall();
+      // Auto-fetch next lead
+      if (selectedCampaign) {
+        await lead.fetchNextLead(selectedCampaign.id);
+      }
+    }
   };
 
   // Determine the current phase
