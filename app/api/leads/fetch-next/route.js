@@ -64,7 +64,7 @@ export async function POST(request) {
         updated_at = now()
       FROM candidate
       WHERE l.id = candidate.id
-      RETURNING l.id, l.full_name, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id;
+      RETURNING l.id, l.full_name, l.phone_number, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id;
     `;
 
     const lockedRows = await query(lockQuery, [campaignId, userId]);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCall } from '@/hooks/useCall';
 import { useLead } from '@/hooks/useLead';
@@ -24,6 +24,14 @@ export default function AgentDashboard() {
   
   // Mobile tab state: 'call' | 'script' | 'results'
   const [mobileTab, setMobileTab] = useState('call');
+
+  // Device (SIM / Cellular) calling state
+  const [deviceCalling, setDeviceCalling] = useState(false);
+  const [deviceDuration, setDeviceDuration] = useState(0);
+  const deviceTimerRef = useRef(null);
+  const deviceStartTimeRef = useRef(null);
+
+  const callMode = selectedCampaign?.call_mode || 'device';
 
   // Fetch active campaigns
   useEffect(() => {
@@ -68,20 +76,59 @@ export default function AgentDashboard() {
     return () => clearInterval(interval);
   }, [profile?.id]);
 
-  // Auto-open microphone helper modal whenever a mic permission error occurs
+  // Clean up device timer on unmount
   useEffect(() => {
-    if (call.callError && (
+    return () => {
+      if (deviceTimerRef.current) clearInterval(deviceTimerRef.current);
+    };
+  }, []);
+
+  // Auto-open microphone helper modal ONLY in twilio mode whenever a mic permission error occurs
+  useEffect(() => {
+    if (callMode === 'twilio' && call.callError && (
       call.callError.toLowerCase().includes('microphone') ||
       call.callError.toLowerCase().includes('permission') ||
       call.callError.includes('31401')
     )) {
       setShowMicModal(true);
     }
-  }, [call.callError]);
+  }, [callMode, call.callError]);
+
+  /** Device (SIM) call handlers */
+  const handleDeviceCallStarted = () => {
+    setDeviceCalling(true);
+    deviceStartTimeRef.current = Date.now();
+    if (deviceTimerRef.current) clearInterval(deviceTimerRef.current);
+    deviceTimerRef.current = setInterval(() => {
+      setDeviceDuration(Math.floor((Date.now() - deviceStartTimeRef.current) / 1000));
+    }, 1000);
+  };
+
+  const handleDeviceCallFinished = (duration) => {
+    if (deviceTimerRef.current) {
+      clearInterval(deviceTimerRef.current);
+      deviceTimerRef.current = null;
+    }
+    setDeviceCalling(false);
+    setShowResults(true);
+    setMobileTab('results');
+  };
+
+  const formattedDeviceDuration = (() => {
+    const mins = Math.floor(deviceDuration / 60);
+    const secs = deviceDuration % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  })();
 
   /** Handle "Fetch Next Attendee" */
   const handleFetchLead = async () => {
     if (!selectedCampaign) return;
+    if (deviceTimerRef.current) {
+      clearInterval(deviceTimerRef.current);
+      deviceTimerRef.current = null;
+    }
+    setDeviceCalling(false);
+    setDeviceDuration(0);
     await lead.fetchNextLead(selectedCampaign.id);
     call.resetCall();
     setShowResults(false);
@@ -126,8 +173,17 @@ export default function AgentDashboard() {
 
   /** Handle results confirmation */
   const handleConfirmResults = async (confirmedData) => {
-    const success = await lead.submitResults(lead.currentCall?.id, confirmedData);
+    const success = await lead.submitResults(lead.currentCall?.id, {
+      ...confirmedData,
+      durationSeconds: callMode === 'device' ? deviceDuration : call.callDuration,
+    });
     if (success) {
+      if (deviceTimerRef.current) {
+        clearInterval(deviceTimerRef.current);
+        deviceTimerRef.current = null;
+      }
+      setDeviceCalling(false);
+      setDeviceDuration(0);
       setShowResults(false);
       call.resetCall();
       setMobileTab('call');
@@ -139,6 +195,13 @@ export default function AgentDashboard() {
   };
 
   const handleSkip = async (disposition) => {
+    if (deviceTimerRef.current) {
+      clearInterval(deviceTimerRef.current);
+      deviceTimerRef.current = null;
+    }
+    setDeviceCalling(false);
+    setDeviceDuration(0);
+
     let success = true;
     if (lead.currentCall?.id) {
       success = await lead.submitNoAnswer(lead.currentCall.id, disposition);
@@ -156,12 +219,15 @@ export default function AgentDashboard() {
   };
 
   // Determine the current phase
-  const phase = !lead.currentLead ? 'idle' :
-    call.callState === 'idle' ? 'ready' :
-    (call.callState === 'ended' || showResults) ? 'results' :
-    'calling';
+  const isCallActive = callMode === 'device'
+    ? deviceCalling
+    : (call.callState === 'active' || call.callState === 'ringing' || call.callState === 'connecting');
 
-  const isCallActive = call.callState === 'active' || call.callState === 'ringing' || call.callState === 'connecting';
+  const phase = !lead.currentLead ? 'idle' :
+    isCallActive ? 'calling' :
+    (call.callState === 'ended' || showResults) ? 'results' :
+    'ready';
+
   const hasResults = showResults || lead.qaResults || lead.processingAI;
 
   return (
@@ -246,8 +312,8 @@ export default function AgentDashboard() {
             role="tab"
             aria-selected={mobileTab === 'results'}
           >
-            <span>🤖</span>
-            <span>AI Review</span>
+            <span>{callMode === 'device' ? '📝' : '🤖'}</span>
+            <span>{callMode === 'device' ? 'Outcome & Notes' : 'AI Review'}</span>
             {lead.processingAI && <div className="spinner spinner-sm" style={{ width: 12, height: 12 }}></div>}
           </button>
         )}
@@ -263,6 +329,7 @@ export default function AgentDashboard() {
             onFetchNext={handleFetchLead}
             phase={phase}
             campaignSelected={!!selectedCampaign}
+            callMode={callMode}
           />
         </div>
 
@@ -289,7 +356,7 @@ export default function AgentDashboard() {
                   setMobileTab('results');
                 }}
               >
-                🤖 AI Results
+                {callMode === 'device' ? '📝 Outcome & Notes' : '🤖 AI Results'}
               </button>
             </div>
           )}
@@ -318,6 +385,7 @@ export default function AgentDashboard() {
         {/* Right Panel: Call Controls */}
         <div className={`${styles.rightPanel} ${mobileTab !== 'call' ? styles.hideOnMobile : ''}`}>
           <CallDialer
+            callMode={callMode}
             callState={call.callState}
             formattedDuration={call.formattedDuration}
             deviceReady={call.deviceReady}
@@ -335,6 +403,12 @@ export default function AgentDashboard() {
             onSkip={handleSkip}
             hasLead={!!lead.currentLead}
             attendeeName={lead.currentLead?.full_name}
+            phoneNumber={lead.currentLead?.phone_number}
+            onDeviceCallStarted={handleDeviceCallStarted}
+            onDeviceCallFinished={() => handleDeviceCallFinished(deviceDuration)}
+            deviceCalling={deviceCalling}
+            deviceDuration={deviceDuration}
+            formattedDeviceDuration={formattedDeviceDuration}
           />
         </div>
       </div>
@@ -342,6 +416,7 @@ export default function AgentDashboard() {
       {/* Persistent Floating Call Action Bar on Mobile (when reading script or results during active call) */}
       {mobileTab !== 'call' && (
         <CallActionBar
+          callMode={callMode}
           callState={call.callState}
           formattedDuration={call.formattedDuration}
           isMuted={call.isMuted}
@@ -349,6 +424,9 @@ export default function AgentDashboard() {
           onToggleMute={call.toggleMute}
           attendeeName={lead.currentLead?.full_name}
           onOpenCallTab={() => setMobileTab('call')}
+          deviceCalling={deviceCalling}
+          onFinishDeviceCall={() => handleDeviceCallFinished(deviceDuration)}
+          formattedDeviceDuration={formattedDeviceDuration}
         />
       )}
 

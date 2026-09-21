@@ -193,6 +193,23 @@ export default function AIResultsPanel({
         />
       </div>
 
+      {/* Call Disposition */}
+      <div className={`${styles.section} animate-fade-in-up`} style={{ animationDelay: '0.25s' }}>
+        <h3 className={styles.sectionTitle}>📞 Call Outcome</h3>
+        <select
+          className="form-select"
+          value={disposition}
+          onChange={(e) => setDisposition(e.target.value)}
+          style={{ width: '100%', padding: 'var(--space-3)', background: 'var(--surface-overlay)' }}
+        >
+          <option value="completed">✅ Call Completed / Connected</option>
+          <option value="no_answer">📵 No Answer</option>
+          <option value="busy">🔄 Line Busy</option>
+          <option value="wrong_number">❌ Wrong Number</option>
+          <option value="callback_requested">⏰ Callback Requested</option>
+        </select>
+      </div>
+
       {/* Confirm & Cancel Buttons */}
       <div className={styles.confirmSection} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         <button
@@ -200,7 +217,7 @@ export default function AIResultsPanel({
           onClick={handleConfirm}
           style={{ width: '100%' }}
         >
-          ✅ Confirm & Get Next Attendee
+          💾 Save Outcome & Next Attendee
         </button>
         {onCancel && (
           <button

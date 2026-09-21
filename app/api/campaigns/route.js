@@ -11,7 +11,7 @@ export async function GET(request) {
       `SELECT 
         c.id, c.name, c.description, c.script_template, 
         c.next_steps_options, c.consent_message, c.consent_mode, 
-        c.status, c.retention_days, c.created_at, c.updated_at,
+        c.status, c.retention_days, c.call_mode, c.created_at, c.updated_at,
         COUNT(l.id)::int as total_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'completed')::int as completed_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'failed')::int as failed_leads,
@@ -28,6 +28,7 @@ export async function GET(request) {
       const failed = c.failed_leads || 0;
       return {
         ...c,
+        call_mode: c.call_mode || 'device',
         stats: {
           total,
           completed,
@@ -64,6 +65,8 @@ export async function POST(request) {
       consentMode,
       retention_days = 30,
       retentionDays,
+      call_mode = 'device',
+      callMode,
     } = body;
 
     const finalName = name?.trim();
@@ -80,12 +83,13 @@ export async function POST(request) {
     const finalConsentMsg = consent_message || consentMessage || 'This call may be recorded for quality purposes.';
     const finalConsentMode = consent_mode || consentMode || 'script';
     const finalRetention = parseInt(retention_days || retentionDays) || 30;
+    const finalCallMode = call_mode || callMode || 'device';
 
     const rows = await query(
       `INSERT INTO campaigns (
         name, description, script_template, next_steps_options,
-        consent_message, consent_mode, retention_days, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+        consent_message, consent_mode, retention_days, call_mode, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
       RETURNING *`,
       [
         finalName,
@@ -95,6 +99,7 @@ export async function POST(request) {
         finalConsentMsg,
         finalConsentMode,
         finalRetention,
+        finalCallMode,
       ]
     );
 
@@ -107,18 +112,33 @@ export async function POST(request) {
 
 /**
  * PATCH /api/campaigns
- * Quick status update: { id, status }
+ * Quick status or call_mode update: { id, status, call_mode }
  */
 export async function PATCH(request) {
   try {
-    const { id, status } = await request.json();
-    if (!id || !status) {
-      return NextResponse.json({ error: 'id and status required' }, { status: 400 });
+    const { id, status, call_mode, callMode } = await request.json();
+    if (!id) {
+      return NextResponse.json({ error: 'id required' }, { status: 400 });
     }
 
+    const updates = ['updated_at = now()'];
+    const values = [];
+    let paramIdx = 1;
+
+    if (status) {
+      updates.push(`status = $${paramIdx++}`);
+      values.push(status);
+    }
+    const finalMode = call_mode || callMode;
+    if (finalMode) {
+      updates.push(`call_mode = $${paramIdx++}`);
+      values.push(finalMode);
+    }
+
+    values.push(id);
     const rows = await query(
-      `UPDATE campaigns SET status = $1, updated_at = now() WHERE id = $2 RETURNING *`,
-      [status, id]
+      `UPDATE campaigns SET ${updates.join(', ')} WHERE id = $${paramIdx} RETURNING *`,
+      values
     );
 
     if (rows.length === 0) {
@@ -127,7 +147,7 @@ export async function PATCH(request) {
 
     return NextResponse.json({ success: true, campaign: rows[0] });
   } catch (err) {
-    console.error('Update campaign status error:', err);
+    console.error('Update campaign error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

@@ -1,14 +1,17 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from './CallDialer.module.css';
 
 /**
- * CallDialer — WebRTC call control panel.
- * Touch-optimised for mobile phones with large 56px touch targets,
- * large timer display, and quick disposition actions.
+ * CallDialer — WebRTC and Device/SIM call control panel.
+ * Supports:
+ * 1. 'device' mode: Direct mobile phone (SIM / Cellular) dialing via tel: link,
+ *    WhatsApp integration, native timers, and manual outcome/notes entry (0 Twilio credits needed).
+ * 2. 'twilio' mode: In-browser WebRTC softphone with audio recording & automated AI QA.
  */
 export default function CallDialer({
+  callMode = 'device', // 'device' | 'twilio'
   callState,
   formattedDuration,
   deviceReady,
@@ -22,126 +25,220 @@ export default function CallDialer({
   onSkip,
   hasLead,
   attendeeName,
+  phoneNumber,
+  onDeviceCallStarted,
+  onDeviceCallFinished,
+  deviceCalling,
+  deviceDuration,
+  formattedDeviceDuration,
 }) {
-  // Auto-init the Twilio device when component mounts
+  // Auto-init the Twilio device ONLY when in twilio mode
   useEffect(() => {
-    onInitDevice();
-  }, [onInitDevice]);
+    if (callMode === 'twilio' && onInitDevice) {
+      onInitDevice();
+    }
+  }, [callMode, onInitDevice]);
 
+  // Format WhatsApp phone number
+  let waNumber = (phoneNumber || '').replace(/[^0-9]/g, '');
+  if (waNumber.startsWith('0') && waNumber.length === 11) {
+    waNumber = '44' + waNumber.slice(1);
+  }
+
+  // Twilio call state flags
   const isIdle = callState === 'idle';
   const isConnecting = callState === 'connecting';
   const isRinging = callState === 'ringing';
   const isActive = callState === 'active';
   const isEnded = callState === 'ended';
 
+  // In device mode, check if we're calling or idle
+  const isInDeviceCall = callMode === 'device' && deviceCalling;
+  const isDialingActive = callMode === 'device' ? isInDeviceCall : isActive;
+  const currentDuration = callMode === 'device' ? formattedDeviceDuration : formattedDuration;
+
   return (
     <div className={styles.dialer}>
       <div className={styles.topRow}>
-        <h3 className={styles.title}>☎️ Call Controls</h3>
+        <h3 className={styles.title}>
+          {callMode === 'device' ? '📱 Mobile / SIM Controls' : '☎️ Call Controls'}
+        </h3>
         {/* Device Status */}
         <div className={styles.deviceStatus}>
-          <div className={`${styles.statusDot} ${deviceReady ? styles.statusReady : styles.statusNotReady}`}></div>
+          <div className={`${styles.statusDot} ${
+            callMode === 'device' ? styles.statusReady :
+            deviceReady ? styles.statusReady : styles.statusNotReady
+          }`}></div>
           <span className={styles.statusText}>
-            {deviceReady ? 'Phone ready' : 'Connecting...'}
+            {callMode === 'device' ? 'Volunteer Phone (Free)' : deviceReady ? 'Twilio Ready' : 'Connecting...'}
           </span>
         </div>
       </div>
 
       {/* Call Display Card */}
       <div className={`${styles.callDisplay} ${
-        isActive ? styles.callActive : 
-        isRinging || isConnecting ? styles.callConnecting : 
+        isDialingActive ? styles.callActive : 
+        (isRinging || isConnecting) ? styles.callConnecting : 
         isEnded ? styles.callEnded : ''
       }`}>
-        {isActive && (
+        {isDialingActive && (
           <>
             <div className={styles.callRing}></div>
             <div className={styles.callRing2}></div>
           </>
         )}
         <div className={styles.callAvatar}>
-          {isActive ? '📞' : isRinging || isConnecting ? '📱' : isEnded ? '✅' : '👤'}
+          {isDialingActive ? '📞' : (isRinging || isConnecting) ? '📱' : isEnded ? '✅' : '👤'}
         </div>
         <div className={styles.callInfo}>
           <span className={styles.callName}>
             {attendeeName || 'No attendee selected'}
           </span>
           <span className={styles.callStatus}>
-            {isIdle && (hasLead ? 'Ready to dial' : 'Fetch attendee first')}
-            {isConnecting && 'Connecting to carrier...'}
-            {isRinging && 'Ringing...'}
-            {isActive && 'In Call'}
-            {isEnded && 'Call Completed'}
+            {callMode === 'device' ? (
+              isInDeviceCall ? 'In Call via Phone / SIM' : (hasLead ? 'Ready to dial from phone' : 'Fetch attendee first')
+            ) : (
+              <>
+                {isIdle && (hasLead ? 'Ready to dial' : 'Fetch attendee first')}
+                {isConnecting && 'Connecting to carrier...'}
+                {isRinging && 'Ringing...'}
+                {isActive && 'In Call'}
+                {isEnded && 'Call Completed'}
+              </>
+            )}
           </span>
         </div>
 
         {/* Timer display */}
-        {(isActive || isEnded) && (
+        {(isDialingActive || isEnded) && (
           <div className={styles.timerContainer}>
             <span className={styles.timerPulse}></span>
-            <span className={styles.timer}>{formattedDuration}</span>
+            <span className={styles.timer}>{currentDuration}</span>
           </div>
         )}
       </div>
 
       {/* Action Buttons */}
       <div className={styles.actions}>
-        {isIdle && (
-          <button
-            className={`btn btn-success ${styles.dialBtn}`}
-            onClick={onStartCall}
-            disabled={!deviceReady || !hasLead}
-            aria-label="Start Call"
-          >
-            <span className={styles.btnIcon}>📞</span>
-            <span>Start Call</span>
-          </button>
-        )}
+        {callMode === 'device' ? (
+          // Device / SIM Actions
+          !isInDeviceCall ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width: '100%' }}>
+              <a
+                href={phoneNumber ? `tel:${phoneNumber}` : '#'}
+                className={`btn btn-success ${styles.dialBtn}`}
+                onClick={onDeviceCallStarted}
+                style={{
+                  pointerEvents: (!hasLead || !phoneNumber) ? 'none' : 'auto',
+                  opacity: (!hasLead || !phoneNumber) ? 0.5 : 1,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                aria-label="Call attendee via phone dialer"
+              >
+                <span className={styles.btnIcon}>📞</span>
+                <span>Call via Mobile (SIM / Cellular)</span>
+              </a>
 
-        {(isConnecting || isRinging) && (
-          <button
-            className={`btn btn-danger ${styles.cancelBtn}`}
-            onClick={onEndCall}
-            aria-label="Cancel Call"
-          >
-            <span className={styles.btnIcon}>✕</span>
-            <span>Cancel Dialing</span>
-          </button>
-        )}
+              {waNumber && hasLead && (
+                <a
+                  href={`https://wa.me/${waNumber}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-secondary"
+                  onClick={onDeviceCallStarted}
+                  style={{
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3)',
+                    fontSize: 'var(--text-sm)'
+                  }}
+                  aria-label="Open WhatsApp conversation"
+                >
+                  <span>💬</span>
+                  <span>Call / Chat on WhatsApp</span>
+                </a>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', width: '100%' }}>
+              <button
+                className={`btn btn-success ${styles.dialBtn}`}
+                onClick={onDeviceCallFinished}
+                style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)' }}
+                aria-label="Finish call and log outcome"
+              >
+                <span className={styles.btnIcon}>✅</span>
+                <span>Call Finished — Log Notes & Outcome</span>
+              </button>
+            </div>
+          )
+        ) : (
+          // Twilio Actions
+          <>
+            {isIdle && (
+              <button
+                className={`btn btn-success ${styles.dialBtn}`}
+                onClick={onStartCall}
+                disabled={!deviceReady || !hasLead}
+                aria-label="Start Call"
+              >
+                <span className={styles.btnIcon}>📞</span>
+                <span>Start Call</span>
+              </button>
+            )}
 
-        {isActive && (
-          <div className={styles.inCallControls}>
-            <button
-              className={`btn ${isMuted ? 'btn-warning' : 'btn-secondary'} ${styles.muteBtn}`}
-              onClick={onToggleMute}
-              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
-            >
-              <span className={styles.btnIcon}>{isMuted ? '🔇' : '🔊'}</span>
-              <span>{isMuted ? 'Unmute' : 'Mute'}</span>
-            </button>
-            <button
-              className={`btn btn-danger ${styles.endBtn}`}
-              onClick={onEndCall}
-              aria-label="End Call"
-            >
-              <span className={styles.btnIcon}>📵</span>
-              <span>End Call</span>
-            </button>
-          </div>
-        )}
+            {(isConnecting || isRinging) && (
+              <button
+                className={`btn btn-danger ${styles.cancelBtn}`}
+                onClick={onEndCall}
+                aria-label="Cancel Call"
+              >
+                <span className={styles.btnIcon}>✕</span>
+                <span>Cancel Dialing</span>
+              </button>
+            )}
 
-        {isEnded && (
-          <div className={styles.endedMessage}>
-            <div className="spinner spinner-sm"></div>
-            <span>Processing AI transcript & analysis...</span>
-          </div>
+            {isActive && (
+              <div className={styles.inCallControls}>
+                <button
+                  className={`btn ${isMuted ? 'btn-warning' : 'btn-secondary'} ${styles.muteBtn}`}
+                  onClick={onToggleMute}
+                  aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
+                >
+                  <span className={styles.btnIcon}>{isMuted ? '🔇' : '🔊'}</span>
+                  <span>{isMuted ? 'Unmute' : 'Mute'}</span>
+                </button>
+                <button
+                  className={`btn btn-danger ${styles.endBtn}`}
+                  onClick={onEndCall}
+                  aria-label="End Call"
+                >
+                  <span className={styles.btnIcon}>📵</span>
+                  <span>End Call</span>
+                </button>
+              </div>
+            )}
+
+            {isEnded && (
+              <div className={styles.endedMessage}>
+                <div className="spinner spinner-sm"></div>
+                <span>Processing AI transcript & analysis...</span>
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* Quick Dispositions (no-answer scenarios) */}
-      {isIdle && hasLead && (
+      {hasLead && (callMode === 'device' || isIdle) && (
         <div className={styles.quickActions}>
-          <p className={styles.quickLabel}>Quick Log (No Answer):</p>
+          <p className={styles.quickLabel}>Quick Log (No Answer / Unreachable):</p>
           <div className={styles.quickGrid}>
             <button
               className={`btn btn-ghost ${styles.quickBtn}`}
@@ -168,8 +265,8 @@ export default function CallDialer({
         </div>
       )}
 
-      {/* Error display */}
-      {callError && (
+      {/* Error display (only relevant for Twilio mode) */}
+      {callMode === 'twilio' && callError && (
         <div className={styles.error} role="alert" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 'var(--space-2)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
             <span>⚠️</span>
@@ -202,9 +299,9 @@ export default function CallDialer({
 
 /**
  * CallActionBar — Persistent floating call strip for mobile.
- * Appears when a call is active so volunteers can mute or end call from any tab.
  */
 export function CallActionBar({
+  callMode = 'device',
   callState,
   formattedDuration,
   isMuted,
@@ -212,9 +309,14 @@ export function CallActionBar({
   onToggleMute,
   attendeeName,
   onOpenCallTab,
+  deviceCalling,
+  onFinishDeviceCall,
+  formattedDeviceDuration,
 }) {
-  const isCallingOrActive = callState === 'active' || callState === 'ringing' || callState === 'connecting';
-  if (!isCallingOrActive) return null;
+  const isTwilioActive = callState === 'active' || callState === 'ringing' || callState === 'connecting';
+  const isDeviceActive = callMode === 'device' && deviceCalling;
+  
+  if (callMode === 'device' ? !isDeviceActive : !isTwilioActive) return null;
 
   return (
     <div className={styles.floatingActionBar} role="region" aria-label="Active call controls">
@@ -223,27 +325,40 @@ export function CallActionBar({
         <div className={styles.floatingMeta}>
           <span className={styles.floatingName}>{attendeeName || 'Active Call'}</span>
           <span className={styles.floatingTimer}>
-            {callState === 'ringing' ? 'Ringing...' : formattedDuration}
+            {callMode === 'device' ? formattedDeviceDuration : (callState === 'ringing' ? 'Ringing...' : formattedDuration)}
           </span>
         </div>
       </div>
       <div className={styles.floatingBtns}>
-        {callState === 'active' && (
+        {callMode === 'device' ? (
           <button
-            className={`${styles.floatingMuteBtn} ${isMuted ? styles.floatingMuteActive : ''}`}
-            onClick={onToggleMute}
-            aria-label={isMuted ? 'Unmute' : 'Mute'}
+            className={styles.floatingEndBtn}
+            onClick={onFinishDeviceCall}
+            aria-label="Finish and Log Call"
+            style={{ background: 'var(--color-success)', color: '#fff' }}
           >
-            {isMuted ? '🔇' : '🔊'}
+            ✅ Finish
           </button>
+        ) : (
+          <>
+            {callState === 'active' && (
+              <button
+                className={`${styles.floatingMuteBtn} ${isMuted ? styles.floatingMuteActive : ''}`}
+                onClick={onToggleMute}
+                aria-label={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? '🔇' : '🔊'}
+              </button>
+            )}
+            <button
+              className={styles.floatingEndBtn}
+              onClick={onEndCall}
+              aria-label="End Call"
+            >
+              📵 End
+            </button>
+          </>
         )}
-        <button
-          className={styles.floatingEndBtn}
-          onClick={onEndCall}
-          aria-label="End Call"
-        >
-          📵 End
-        </button>
       </div>
     </div>
   );

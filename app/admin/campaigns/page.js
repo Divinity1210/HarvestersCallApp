@@ -22,6 +22,7 @@ export default function CampaignsPage() {
   const [form, setForm] = useState({
     name: '',
     description: '',
+    callMode: 'device', // 'device' (Volunteer Mobile / SIM) | 'twilio' (Twilio WebRTC)
     scriptTemplate: `## Introduction\nSAY: Hello, good day! Am I speaking with **{{attendee_name}}**?\nSAY: My name is **{{agent_name}}** and I am calling from Harvesters International Christian Centre.\nSAY: I am calling to follow up on your attendance at the Next Level Prayer Conference.\n\n## Experience Check\nASK: How was your experience at the conference?\nNOTE: Listen carefully and note any testimony or positive feedback.\n\n## Testimony\nASK: Did anything significant happen to you during the conference? Any testimony you'd like to share?\nNOTE: If they share a testimony, listen fully and acknowledge it warmly.\nSAY: That is wonderful! Praise God!\n\n## Next Steps\nSAY: We have some exciting opportunities for you to continue growing in your faith.\nASK: Would you be interested in any of the following?\nACTION: Read through the Next Steps options and note which ones the attendee agrees to.\n\n## Closing\nSAY: Thank you so much for your time, {{attendee_name}}. God bless you!\nSAY: We look forward to seeing you at church.`,
     nextStepsOptions: DEFAULT_NEXT_STEPS.join('\n'),
     consentMessage: 'This call may be recorded for quality purposes.',
@@ -62,6 +63,7 @@ export default function CampaignsPage() {
         body: JSON.stringify({
           name: form.name,
           description: form.description,
+          call_mode: form.callMode || 'device',
           script_template: form.scriptTemplate,
           next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
           consent_message: form.consentMessage,
@@ -76,7 +78,7 @@ export default function CampaignsPage() {
       } else {
         setShowCreate(false);
         fetchCampaigns();
-        setForm(prev => ({ ...prev, name: '', description: '' }));
+        setForm(prev => ({ ...prev, name: '', description: '', callMode: 'device' }));
       }
     } catch (err) {
       console.error('Unexpected error:', err);
@@ -93,11 +95,22 @@ export default function CampaignsPage() {
     fetchCampaigns();
   };
 
+  const handleCallModeToggle = async (campaignId, currentMode) => {
+    const newMode = currentMode === 'device' ? 'twilio' : 'device';
+    await fetch('/api/campaigns', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: campaignId, call_mode: newMode }),
+    });
+    fetchCampaigns();
+  };
+
   /** Edit campaign */
   const handleEdit = (campaign) => {
     setForm({
       name: campaign.name,
       description: campaign.description || '',
+      callMode: campaign.call_mode || 'device',
       scriptTemplate: campaign.script_template || '',
       nextStepsOptions: (campaign.next_steps_options || []).join('\n'),
       consentMessage: campaign.consent_message || '',
@@ -117,6 +130,7 @@ export default function CampaignsPage() {
       body: JSON.stringify({
         name: form.name,
         description: form.description,
+        call_mode: form.callMode || 'device',
         script_template: form.scriptTemplate,
         next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
         consent_message: form.consentMessage,
@@ -217,6 +231,7 @@ export default function CampaignsPage() {
           <button className="btn btn-primary" onClick={() => {
             setForm({
               name: '', description: '',
+              callMode: 'device',
               scriptTemplate: form.scriptTemplate,
               nextStepsOptions: form.nextStepsOptions,
               consentMessage: form.consentMessage,
@@ -242,14 +257,25 @@ export default function CampaignsPage() {
                   <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
                     {campaign.description || 'No description'}
                   </p>
-                  <div style={{ display: 'flex', gap: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
                     <span>📋 {(campaign.next_steps_options || []).length} next steps</span>
                     <span>🗓️ Created {new Date(campaign.created_at).toLocaleDateString()}</span>
                     <span>🗑️ Retention: {campaign.retention_days} days</span>
-                    <span>🔒 Consent: {campaign.consent_mode || 'script'}</span>
+                    <span style={{ fontWeight: 600, color: campaign.call_mode === 'device' ? 'var(--color-success)' : 'var(--color-primary)' }}>
+                      {campaign.call_mode === 'device' ? '📱 Volunteer Phone (SIM)' : '☁️ Twilio WebRTC'}
+                    </span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0, alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className={`badge ${campaign.call_mode === 'device' ? 'badge-success' : 'badge-neutral'}`}
+                    style={{ cursor: 'pointer', border: 'none', padding: '5px 10px', fontSize: '11px', fontWeight: 600 }}
+                    onClick={() => handleCallModeToggle(campaign.id, campaign.call_mode || 'device')}
+                    title="Click to toggle between Volunteer Phone (SIM) and Twilio"
+                  >
+                    {campaign.call_mode === 'device' ? '📱 SIM Call' : '☁️ Twilio'} ⇄ Switch
+                  </button>
                   <span className={`badge ${
                     campaign.status === 'active' ? 'badge-success' :
                     campaign.status === 'paused' ? 'badge-warning' : 'badge-neutral'
@@ -364,6 +390,61 @@ export default function CampaignsPage() {
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                   placeholder="Follow-up calls for NLP conference attendees"
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>Calling Method</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
+                  <label style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: form.callMode === 'device' ? '2px solid var(--color-success)' : '1px solid var(--border-subtle)',
+                    background: form.callMode === 'device' ? 'rgba(34, 197, 94, 0.08)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <input
+                        type="radio"
+                        name="createCallMode"
+                        value="device"
+                        checked={form.callMode === 'device'}
+                        onChange={() => setForm(p => ({ ...p, callMode: 'device' }))}
+                      />
+                      <strong style={{ fontSize: 'var(--text-sm)' }}>📱 Volunteer Phone (SIM)</strong>
+                    </div>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      <strong>Free • No Twilio credits needed.</strong> Volunteers tap to dial directly using their phone dialer or WhatsApp.
+                    </span>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: form.callMode === 'twilio' ? '2px solid var(--color-primary)' : '1px solid var(--border-subtle)',
+                    background: form.callMode === 'twilio' ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <input
+                        type="radio"
+                        name="createCallMode"
+                        value="twilio"
+                        checked={form.callMode === 'twilio'}
+                        onChange={() => setForm(p => ({ ...p, callMode: 'twilio' }))}
+                      />
+                      <strong style={{ fontSize: 'var(--text-sm)' }}>☁️ Twilio Cloud (WebRTC)</strong>
+                    </div>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      In-browser calling with call recording & automated AI QA. Requires Twilio balance.
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <div className="form-group">
@@ -648,6 +729,61 @@ export default function CampaignsPage() {
                   value={form.description}
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label" style={{ fontWeight: 600 }}>Calling Method</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
+                  <label style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: form.callMode === 'device' ? '2px solid var(--color-success)' : '1px solid var(--border-subtle)',
+                    background: form.callMode === 'device' ? 'rgba(34, 197, 94, 0.08)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <input
+                        type="radio"
+                        name="editCallMode"
+                        value="device"
+                        checked={form.callMode === 'device'}
+                        onChange={() => setForm(p => ({ ...p, callMode: 'device' }))}
+                      />
+                      <strong style={{ fontSize: 'var(--text-sm)' }}>📱 Volunteer Phone (SIM)</strong>
+                    </div>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      <strong>Free • No Twilio credits needed.</strong> Volunteers tap to dial directly using their phone dialer or WhatsApp.
+                    </span>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: form.callMode === 'twilio' ? '2px solid var(--color-primary)' : '1px solid var(--border-subtle)',
+                    background: form.callMode === 'twilio' ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <input
+                        type="radio"
+                        name="editCallMode"
+                        value="twilio"
+                        checked={form.callMode === 'twilio'}
+                        onChange={() => setForm(p => ({ ...p, callMode: 'twilio' }))}
+                      />
+                      <strong style={{ fontSize: 'var(--text-sm)' }}>☁️ Twilio Cloud (WebRTC)</strong>
+                    </div>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      In-browser calling with call recording & automated AI QA. Requires Twilio balance.
+                    </span>
+                  </label>
+                </div>
               </div>
 
               <div className="form-group">

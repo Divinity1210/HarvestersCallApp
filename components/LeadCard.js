@@ -8,7 +8,7 @@ import styles from './LeadCard.module.css';
  * Mobile-optimised with a compact header strip, expandable metadata,
  * and touch-friendly action buttons.
  */
-export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSelected }) {
+export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSelected, callMode = 'device' }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   if (!campaignSelected) {
@@ -77,7 +77,7 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
           'badge-warning'
         }`}>
           {phase === 'calling' ? '🔴 On Call' :
-           phase === 'results' ? '🤖 AI Review' :
+           phase === 'results' ? '📝 Outcome' :
            '⏳ Ready'}
         </span>
       </div>
@@ -96,9 +96,30 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
               </span>
             )}
           </h2>
-          <p className={styles.phoneHidden}>
-            <span>🔒</span> Phone hidden for privacy
-          </p>
+          {callMode === 'device' && lead.phone_number ? (
+            <p style={{ margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)' }}>
+              <a
+                href={`tel:${lead.phone_number}`}
+                style={{
+                  color: 'var(--color-primary-light, #818cf8)',
+                  fontWeight: 600,
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span>📱</span> {lead.phone_number}
+              </a>
+              <span style={{ fontSize: '10px', background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                SIM
+              </span>
+            </p>
+          ) : (
+            <p className={styles.phoneHidden}>
+              <span>🔒</span> Phone hidden for privacy
+            </p>
+          )}
         </div>
       </div>
 

@@ -15,23 +15,33 @@ export async function POST(request) {
     }
 
     // Update the call record
+    const callStatus = noAnswer ? (agentDisposition === 'busy' ? 'busy' : 'no-answer') : 'completed';
     await query(
       `UPDATE calls 
-       SET agent_disposition = $1 
-       WHERE id = $2`,
-      [agentDisposition || 'completed', callId]
+       SET 
+         agent_disposition = $1,
+         call_status = $2,
+         duration_seconds = COALESCE($3, duration_seconds, 0),
+         ended_at = COALESCE(ended_at, now())
+       WHERE id = $4`,
+      [agentDisposition || 'completed', callStatus, body.durationSeconds || null, callId]
     );
 
-    // Update QA results if this was a connected call
+    // Update QA results if this was a connected call (upsert so it works for mobile SIM calls too)
     if (!noAnswer && (nextStepsConfirmed || testimonyConfirmed)) {
       await query(
-        `UPDATE qa_results 
-         SET next_steps_confirmed = $1, testimony_confirmed = $2 
-         WHERE call_id = $3`,
+        `INSERT INTO qa_results (call_id, next_steps_confirmed, testimony_confirmed, processing_status, processed_at)
+         VALUES ($1, $2, $3, 'complete', now())
+         ON CONFLICT (call_id) 
+         DO UPDATE SET 
+           next_steps_confirmed = EXCLUDED.next_steps_confirmed,
+           testimony_confirmed = EXCLUDED.testimony_confirmed,
+           processing_status = 'complete',
+           processed_at = now()`,
         [
+          callId,
           JSON.stringify(nextStepsConfirmed || []),
           testimonyConfirmed || '',
-          callId,
         ]
       );
     }
