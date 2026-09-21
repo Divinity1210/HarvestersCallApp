@@ -535,7 +535,12 @@ export default function CampaignsPage() {
                         const data = await res.json();
                         if (res.ok) {
                           setImportStatus(data.message);
-                          setTimeout(() => { setShowImport(null); setImportStatus(''); setSheetsUrl(''); }, 3000);
+                          setTimeout(() => { 
+                            setShowImport(null); 
+                            setImportStatus(''); 
+                            setSheetsUrl(''); 
+                            fetchCampaigns();
+                          }, 2500);
                         } else {
                           setImportStatus(`Error: ${data.error}`);
                         }
