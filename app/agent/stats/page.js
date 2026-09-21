@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import styles from './stats.module.css';
 
 export default function AgentStatsPage() {
@@ -20,102 +19,36 @@ export default function AgentStatsPage() {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      const agentId = profile.id;
+      const res = await fetch(`/api/agent/stats?period=${period}`);
+      const data = await res.json();
 
-      // Calculate date range
-      const now = new Date();
-      let startDate = new Date();
-      if (period === 'today') {
-        startDate.setHours(0, 0, 0, 0);
-      } else if (period === 'week') {
-        startDate.setDate(now.getDate() - 7);
-      } else if (period === 'month') {
-        startDate.setMonth(now.getMonth() - 1);
-      } else {
-        startDate = new Date(0); // All time
+      if (data?.stats) {
+        const s = data.stats;
+        setStats({
+          totalCalls: s.totalCalls,
+          connectedCalls: s.completedCalls,
+          connectionRate: s.totalCalls > 0 ? Math.round((s.completedCalls / s.totalCalls) * 100) : 0,
+          noAnswerCalls: Math.max(0, s.totalCalls - s.completedCalls),
+          totalDuration: (s.completedCalls || 0) * (s.avgDuration || 0),
+          avgDuration: s.avgDuration,
+          avgScriptScore: s.avgScriptAdherence,
+          testimonies: s.testimoniesCollected,
+          nextStepsCount: s.nextStepsAgreed,
+          flagged: (data.recentCalls || []).filter(c => c.flagged).length,
+        });
+
+        setRecentCalls((data.recentCalls || []).map(c => ({
+          ...c,
+          leadName: c.lead_name || 'Unknown',
+          qa: {
+            script_adherence_score: c.script_adherence_score,
+            flagged: c.flagged,
+            testimony_confirmed: c.testimony_confirmed,
+            next_steps_confirmed: c.next_steps_confirmed,
+            processing_status: c.processing_status,
+          },
+        })));
       }
-
-      // Fetch all calls for this agent in the period
-      let query = supabase
-        .from('calls')
-        .select('*')
-        .eq('agent_id', agentId)
-        .order('created_at', { ascending: false });
-
-      if (period !== 'all') {
-        query = query.gte('created_at', startDate.toISOString());
-      }
-
-      const { data: calls } = await query;
-
-      // Fetch QA results for these calls
-      const callIds = (calls || []).map(c => c.id);
-      let qaResults = [];
-      if (callIds.length > 0) {
-        const { data: qa } = await supabase
-          .from('qa_results')
-          .select('call_id, script_adherence_score, flagged, testimony_confirmed, next_steps_confirmed')
-          .in('call_id', callIds);
-        qaResults = qa || [];
-      }
-
-      const qaMap = {};
-      qaResults.forEach(q => { qaMap[q.call_id] = q; });
-
-      // Calculate stats
-      const totalCalls = calls?.length || 0;
-      const connected = (calls || []).filter(c => c.call_status === 'completed');
-      const noAnswer = (calls || []).filter(c => ['no-answer', 'busy', 'failed'].includes(c.call_status));
-      const totalDuration = connected.reduce((s, c) => s + (c.duration_seconds || 0), 0);
-      const avgDuration = connected.length > 0 ? Math.round(totalDuration / connected.length) : 0;
-
-      // Script scores
-      const scores = qaResults.filter(q => q.script_adherence_score != null);
-      const avgScore = scores.length > 0
-        ? Math.round(scores.reduce((s, q) => s + q.script_adherence_score, 0) / scores.length)
-        : 0;
-
-      // Testimonies
-      const testimonies = qaResults.filter(q => q.testimony_confirmed && q.testimony_confirmed.trim() !== '').length;
-
-      // Next steps
-      const nextStepsCount = qaResults.reduce((sum, q) => {
-        return sum + (Array.isArray(q.next_steps_confirmed) ? q.next_steps_confirmed.length : 0);
-      }, 0);
-
-      // Flagged
-      const flagged = qaResults.filter(q => q.flagged).length;
-
-      setStats({
-        totalCalls,
-        connectedCalls: connected.length,
-        connectionRate: totalCalls > 0 ? Math.round((connected.length / totalCalls) * 100) : 0,
-        noAnswerCalls: noAnswer.length,
-        totalDuration,
-        avgDuration,
-        avgScriptScore: avgScore,
-        testimonies,
-        nextStepsCount,
-        flagged,
-      });
-
-      // Get recent calls with lead names
-      const recentCallData = (calls || []).slice(0, 10);
-      const leadIds = [...new Set(recentCallData.map(c => c.lead_id).filter(Boolean))];
-      let leadMap = {};
-      if (leadIds.length > 0) {
-        const { data: leads } = await supabase
-          .from('leads')
-          .select('id, full_name')
-          .in('id', leadIds);
-        (leads || []).forEach(l => { leadMap[l.id] = l.full_name; });
-      }
-
-      setRecentCalls(recentCallData.map(c => ({
-        ...c,
-        leadName: leadMap[c.lead_id] || 'Unknown',
-        qa: qaMap[c.id] || null,
-      })));
     } catch (err) {
       console.error('Stats fetch error:', err);
     } finally {

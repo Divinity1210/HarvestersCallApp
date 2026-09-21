@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
 
 /**
  * POST /api/twilio/recording-status
@@ -13,43 +13,35 @@ export async function POST(request) {
     const recordingSid = formData.get('RecordingSid');
     const recordingUrl = formData.get('RecordingUrl');
     const recordingStatus = formData.get('RecordingStatus');
-    const recordingDuration = formData.get('RecordingDuration');
 
     if (!callSid || !recordingSid) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
+    const rows = await query(
+      `UPDATE calls 
+       SET twilio_recording_sid = $1, recording_url = $2, recording_status = $3 
+       WHERE twilio_call_sid = $4 
+       RETURNING id, campaign_id`,
+      [recordingSid, recordingUrl, recordingStatus, callSid]
+    );
 
-    // Update call with recording info
-    const { data: callData, error: updateError } = await supabase
-      .from('calls')
-      .update({
-        twilio_recording_sid: recordingSid,
-        recording_url: recordingUrl,
-        recording_status: recordingStatus,
-      })
-      .eq('twilio_call_sid', callSid)
-      .select('id, campaign_id')
-      .single();
-
-    if (updateError) {
-      console.error('Recording update error:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (rows.length === 0) {
+      return NextResponse.json({ error: 'Call not found' }, { status: 404 });
     }
 
+    const callData = rows[0];
+
     // Create a qa_results row with 'pending' status
-    if (callData && recordingStatus === 'completed') {
-      await supabase
-        .from('qa_results')
-        .upsert({
-          call_id: callData.id,
-          processing_status: 'pending',
-        });
+    if (recordingStatus === 'completed') {
+      await query(
+        `INSERT INTO qa_results (call_id, processing_status) 
+         VALUES ($1, 'pending') 
+         ON CONFLICT (call_id) DO NOTHING`,
+        [callData.id]
+      );
 
       // Trigger async AI processing
-      // In production, this would be a background job
-      // For now, we fire-and-forget to our process-call endpoint
       const baseUrl = new URL(request.url);
       fetch(`${baseUrl.protocol}//${baseUrl.host}/api/ai/process-call`, {
         method: 'POST',

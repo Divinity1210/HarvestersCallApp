@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
 import twilio from 'twilio';
 
 /**
  * POST /api/twilio/voice
  * TwiML endpoint — Twilio calls this when an agent initiates a call.
- * Looks up the phone number server-side (agent never sees it),
+ * Looks up the phone number server-side (volunteer never sees it),
  * plays a consent whisper, then bridges the call.
  */
 export async function POST(request) {
@@ -23,15 +23,13 @@ export async function POST(request) {
       });
     }
 
-    // Look up the phone number from the database (server-side only)
-    const supabase = createAdminClient();
-    const { data: lead, error } = await supabase
-      .from('leads')
-      .select('phone_number, campaign_id')
-      .eq('id', leadId)
-      .single();
+    // Look up phone number from Neon PostgreSQL (masked from volunteer)
+    const leadRows = await query(
+      `SELECT phone_number, campaign_id FROM leads WHERE id = $1 LIMIT 1`,
+      [leadId]
+    );
 
-    if (error || !lead) {
+    if (leadRows.length === 0) {
       const twiml = new twilio.twiml.VoiceResponse();
       twiml.say('Error: Lead not found.');
       twiml.hangup();
@@ -40,20 +38,11 @@ export async function POST(request) {
       });
     }
 
-    // Get the campaign's consent message
-    const { data: campaign } = await supabase
-      .from('campaigns')
-      .select('consent_message')
-      .eq('id', lead.campaign_id)
-      .single();
+    const lead = leadRows[0];
 
     // Build TwiML response
     const twiml = new twilio.twiml.VoiceResponse();
 
-    // Dial the attendee with:
-    // - Consent whisper played to the callee
-    // - Dual-channel recording
-    // - Status callback for our webhook
     const dial = twiml.dial({
       callerId: process.env.TWILIO_PHONE_NUMBER,
       record: 'record-from-answer-dual',
@@ -63,14 +52,11 @@ export async function POST(request) {
       method: 'POST',
     });
 
-    // Normalize phone numbers (e.g., convert UK 07... to +447...)
-    let formattedNumber = lead.phone_number;
+    // Normalize phone numbers
+    let formattedNumber = lead.phone_number.trim();
     if (formattedNumber.startsWith('07') && formattedNumber.length === 11) {
       formattedNumber = '+44' + formattedNumber.substring(1);
     } else if (!formattedNumber.startsWith('+')) {
-      // If it's something else without a plus, try prepending +44 just in case
-      // or assume it's a raw international format
-      // For Nigerian numbers starting with 8 or 9 (e.g., 803...), add +234
       if (/^[789]\d{9}$/.test(formattedNumber)) {
         formattedNumber = '+234' + formattedNumber;
       } else {
@@ -78,7 +64,7 @@ export async function POST(request) {
       }
     }
 
-    const number = dial.number({
+    dial.number({
       statusCallback: `${getBaseUrl(request)}/api/twilio/call-status`,
       statusCallbackEvent: 'initiated ringing answered completed',
       statusCallbackMethod: 'POST',
@@ -88,10 +74,10 @@ export async function POST(request) {
     if (callId) {
       const callSid = formData.get('CallSid');
       if (callSid) {
-        await supabase
-          .from('calls')
-          .update({ twilio_call_sid: callSid })
-          .eq('id', callId);
+        await query(
+          `UPDATE calls SET twilio_call_sid = $1 WHERE id = $2`,
+          [callSid, callId]
+        );
       }
     }
 

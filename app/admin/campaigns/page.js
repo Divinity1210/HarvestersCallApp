@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
 import { DEFAULT_NEXT_STEPS } from '@/lib/constants';
 
 export default function CampaignsPage() {
@@ -35,58 +34,45 @@ export default function CampaignsPage() {
   }, []);
 
   const fetchCampaigns = async () => {
-    const { data } = await supabase
-      .from('campaigns')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    setCampaigns(data || []);
-
-    // Fetch per-campaign lead stats
-    const statsMap = {};
-    for (const c of (data || [])) {
-      const { count: total } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('campaign_id', c.id);
-      const { count: completed } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('campaign_id', c.id)
-        .eq('status', 'completed');
-      const { count: failed } = await supabase
-        .from('leads')
-        .select('*', { count: 'exact', head: true })
-        .eq('campaign_id', c.id)
-        .eq('status', 'failed');
-      statsMap[c.id] = {
-        total: total || 0,
-        completed: completed || 0,
-        failed: failed || 0,
-        percent: total > 0 ? Math.round((completed / total) * 100) : 0,
-      };
+    try {
+      const res = await fetch('/api/campaigns');
+      const data = await res.json();
+      if (data?.campaigns) {
+        setCampaigns(data.campaigns);
+        const statsMap = {};
+        for (const c of data.campaigns) {
+          statsMap[c.id] = c.stats;
+        }
+        setCampaignStats(statsMap);
+      }
+    } catch (err) {
+      console.error('Error fetching campaigns:', err);
+    } finally {
+      setLoading(false);
     }
-    setCampaignStats(statsMap);
-    setLoading(false);
   };
 
   const handleCreate = async (e) => {
     e.preventDefault();
 
     try {
-      const { error } = await supabase.from('campaigns').insert({
-        name: form.name,
-        description: form.description,
-        script_template: form.scriptTemplate,
-        next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
-        consent_message: form.consentMessage,
-        consent_mode: form.consentMode,
-        retention_days: parseInt(form.retentionDays) || 30,
+      const res = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          description: form.description,
+          script_template: form.scriptTemplate,
+          next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
+          consent_message: form.consentMessage,
+          consent_mode: form.consentMode,
+          retention_days: parseInt(form.retentionDays) || 30,
+        }),
       });
 
-      if (error) {
-        console.error('Error creating campaign:', error);
-        alert(`Error creating campaign: ${error.message}`);
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`Error creating campaign: ${data.error}`);
       } else {
         setShowCreate(false);
         fetchCampaigns();
@@ -99,7 +85,11 @@ export default function CampaignsPage() {
   };
 
   const handleStatusChange = async (campaignId, status) => {
-    await supabase.from('campaigns').update({ status }).eq('id', campaignId);
+    await fetch('/api/campaigns', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: campaignId, status }),
+    });
     fetchCampaigns();
   };
 
@@ -184,26 +174,25 @@ export default function CampaignsPage() {
             return;
           }
 
-          // Insert in batches of 100
-          let imported = 0;
-          for (let i = 0; i < leads.length; i += 100) {
-            const batch = leads.slice(i, i + 100);
-            const { error } = await supabase
-              .from('leads')
-              .upsert(batch, { onConflict: 'campaign_id,phone_hash' });
+          // Insert via API route
+          const res = await fetch('/api/leads/import-csv', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaignId, leads }),
+          });
 
-            if (error) {
-              setImportStatus(`Error at row ${i}: ${error.message}`);
-              return;
-            }
-            imported += batch.length;
+          const data = await res.json();
+          if (!res.ok) {
+            setImportStatus(`Error: ${data.error || 'Failed to import CSV'}`);
+            return;
           }
 
-          setImportStatus(`✅ Successfully imported ${imported} leads!`);
+          setImportStatus(`✅ Successfully imported ${data.imported || leads.length} leads!`);
           setTimeout(() => {
             setShowImport(null);
             setImportStatus('');
-          }, 3000);
+            fetchCampaigns();
+          }, 2000);
         },
         error: (err) => {
           setImportStatus(`Parse error: ${err.message}`);

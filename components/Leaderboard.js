@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import styles from './Leaderboard.module.css';
 
 /**
@@ -15,79 +14,14 @@ export default function Leaderboard() {
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
-        // Get all calls today
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const { data: calls } = await supabase
-          .from('calls')
-          .select(`
-            id,
-            agent_id,
-            call_status,
-            duration_seconds,
-            created_at
-          `)
-          .gte('created_at', today.toISOString());
-
-        // Get all agent profiles
-        const { data: profiles } = await supabase
-          .from('agent_profiles')
-          .select('id, full_name, role')
-          .eq('is_active', true);
-
-        // Get QA results for today's calls
-        const callIds = (calls || []).map(c => c.id);
-        const { data: qaResults } = callIds.length > 0
-          ? await supabase
-              .from('qa_results')
-              .select('call_id, script_adherence_score')
-              .in('call_id', callIds)
-          : { data: [] };
-
-        // Build leaderboard
-        const agentMap = {};
-        (profiles || []).forEach(p => {
-          if (p.role === 'agent') {
-            agentMap[p.id] = {
-              id: p.id,
-              name: p.full_name,
-              totalCalls: 0,
-              connectedCalls: 0,
-              totalDuration: 0,
-              totalScore: 0,
-              scoreCount: 0,
-            };
-          }
-        });
-
-        (calls || []).forEach(call => {
-          if (!agentMap[call.agent_id]) return;
-          agentMap[call.agent_id].totalCalls++;
-          if (call.call_status === 'completed') {
-            agentMap[call.agent_id].connectedCalls++;
-            agentMap[call.agent_id].totalDuration += call.duration_seconds || 0;
-          }
-        });
-
-        (qaResults || []).forEach(qa => {
-          const call = (calls || []).find(c => c.id === qa.call_id);
-          if (call && agentMap[call.agent_id] && qa.script_adherence_score != null) {
-            agentMap[call.agent_id].totalScore += qa.script_adherence_score;
-            agentMap[call.agent_id].scoreCount++;
-          }
-        });
-
-        const sorted = Object.values(agentMap)
-          .map(a => ({
+        const res = await fetch('/api/leaderboard');
+        const data = await res.json();
+        if (data?.leaderboard) {
+          setAgents(data.leaderboard.map(a => ({
             ...a,
-            avgDuration: a.connectedCalls > 0 ? Math.round(a.totalDuration / a.connectedCalls) : 0,
-            avgScore: a.scoreCount > 0 ? Math.round(a.totalScore / a.scoreCount) : null,
             connectionRate: a.totalCalls > 0 ? Math.round((a.connectedCalls / a.totalCalls) * 100) : 0,
-          }))
-          .sort((a, b) => b.connectedCalls - a.connectedCalls);
-
-        setAgents(sorted);
+          })));
+        }
       } catch (err) {
         console.error('Leaderboard error:', err);
       } finally {

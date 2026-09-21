@@ -1,7 +1,6 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
 import { ROLES } from '@/lib/constants';
 
 const AuthContext = createContext(null);
@@ -12,30 +11,23 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  /** Fetch agent profile from the agent_profiles table */
-  const fetchProfile = useCallback(async (userId) => {
+  /** Refresh current user profile from server session */
+  const fetchProfile = useCallback(async () => {
     try {
-      const { data, error: profileError } = await supabase
-        .from('agent_profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (profileError) {
-        // If profile doesn't exist yet, create a basic one
-        if (profileError.code === 'PGRST116') {
-          console.warn('No profile found for user. It may need to be created by an admin.');
-          setProfile(null);
-          return null;
-        }
-        throw profileError;
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) {
+        setProfile(null);
+        return null;
       }
-
-      setProfile(data);
-      return data;
+      const data = await res.json();
+      if (data?.profile) {
+        setProfile(data.profile);
+        setUser(data.user);
+        return data.profile;
+      }
+      return null;
     } catch (err) {
       console.error('Error fetching profile:', err);
-      setProfile(null);
       return null;
     }
   }, []);
@@ -45,10 +37,8 @@ export function AuthProvider({ children }) {
 
     async function initializeAuth() {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Auth session error:', error);
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) {
           if (mounted) {
             setUser(null);
             setProfile(null);
@@ -56,18 +46,22 @@ export function AuthProvider({ children }) {
           return;
         }
 
-        if (session?.user) {
-          if (mounted) setUser(session.user);
-          // Always try to fetch profile on initial load if we have a user
-          await fetchProfile(session.user.id);
-        } else {
-          if (mounted) {
+        const data = await res.json();
+        if (mounted) {
+          if (data?.user) {
+            setUser(data.user);
+            setProfile(data.profile);
+          } else {
             setUser(null);
             setProfile(null);
           }
         }
       } catch (err) {
         console.error('Unexpected auth initialization error:', err);
+        if (mounted) {
+          setUser(null);
+          setProfile(null);
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -75,39 +69,29 @@ export function AuthProvider({ children }) {
 
     initializeAuth();
 
-    // Listen for future auth changes (login/logout)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-        if (event === 'INITIAL_SESSION') return; // Handled by initializeAuth
-
-        if (session?.user) {
-          setUser(session.user);
-          await fetchProfile(session.user.id);
-        } else {
-          setUser(null);
-          setProfile(null);
-        }
-        setLoading(false);
-      }
-    );
-
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
-  }, [fetchProfile]);
+  }, []);
 
   /** Sign in with email and password */
   const signIn = async (email, password) => {
     setError(null);
     setLoading(true);
     try {
-      const { data, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
       });
-      if (signInError) throw signInError;
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to sign in');
+      }
+
+      setUser(data.user);
+      setProfile(data.profile);
       return data;
     } catch (err) {
       setError(err.message);
@@ -117,30 +101,22 @@ export function AuthProvider({ children }) {
     }
   };
 
-  /** Sign in with Google OAuth */
+  /** Sign in with Google (Placeholder for direct OAuth) */
   const signInWithGoogle = async () => {
-    setError(null);
-    const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: typeof window !== 'undefined'
-          ? `${window.location.origin}/auth/callback`
-          : undefined,
-      },
-    });
-    if (oauthError) {
-      setError(oauthError.message);
-      throw oauthError;
-    }
-    return data;
+    setError('Google sign-in is not configured on this instance. Please use email & password.');
+    throw new Error('Google sign-in is not configured on this instance. Please use email & password.');
   };
 
   /** Sign out */
   const signOut = async () => {
-    const { error: signOutError } = await supabase.auth.signOut();
-    if (signOutError) throw signOutError;
-    setUser(null);
-    setProfile(null);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Sign out error:', err);
+    } finally {
+      setUser(null);
+      setProfile(null);
+    }
   };
 
   /** Role checks */

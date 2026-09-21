@@ -1,15 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
+import Papa from 'papaparse';
 
 /**
  * POST /api/leads/import-google-sheet
  * Imports leads from a Google Sheet (public or shared via link).
- * Uses the Google Sheets API v4 with an API key (no OAuth needed for public sheets).
- *
- * Expected body: { campaignId, spreadsheetId, sheetName?, nameColumn?, phoneColumn? }
- *
- * The spreadsheet ID is the long string in the Google Sheets URL:
- * https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit
+ * Supports both Google Sheets API v4 and direct public CSV export fallback.
  */
 export async function POST(request) {
   try {
@@ -28,58 +24,59 @@ export async function POST(request) {
       );
     }
 
+    let headers = [];
+    let dataRows = [];
+
+    // Attempt 1: Try Google Sheets API v4 if API key is present
     const apiKey = process.env.GOOGLE_SHEETS_API_KEY || process.env.GOOGLE_AI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'Google API key not configured. Set GOOGLE_SHEETS_API_KEY or GOOGLE_AI_API_KEY in your environment.' },
-        { status: 500 }
-      );
+    let fetchedViaApi = false;
+
+    if (apiKey) {
+      try {
+        const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}?key=${apiKey}`;
+        const sheetsResponse = await fetch(sheetsUrl);
+        if (sheetsResponse.ok) {
+          const sheetsData = await sheetsResponse.json();
+          if (sheetsData.values && sheetsData.values.length >= 2) {
+            headers = sheetsData.values[0].map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+            dataRows = sheetsData.values.slice(1);
+            fetchedViaApi = true;
+          }
+        }
+      } catch (err) {
+        console.warn('Google Sheets API v4 fetch failed, falling back to public CSV export:', err);
+      }
     }
 
-    // Fetch the sheet data using Google Sheets API v4
-    const sheetsUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}?key=${apiKey}`;
+    // Attempt 2: Fallback to direct public CSV export (works for all "Anyone with link" sheets)
+    if (!fetchedViaApi) {
+      const exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
+      const exportRes = await fetch(exportUrl);
 
-    const sheetsResponse = await fetch(sheetsUrl);
-
-    if (!sheetsResponse.ok) {
-      const errorText = await sheetsResponse.text();
-      if (sheetsResponse.status === 403) {
+      if (!exportRes.ok) {
         return NextResponse.json(
-          { error: 'Cannot access the Google Sheet. Make sure it is shared as "Anyone with the link can view".' },
+          { error: 'Cannot access Google Sheet. Please ensure the Google Sheet is shared with "Anyone with the link can view".' },
           { status: 403 }
         );
       }
-      if (sheetsResponse.status === 404) {
+
+      const csvText = await exportRes.text();
+      const parsed = Papa.parse(csvText, { skipEmptyLines: true });
+      if (!parsed.data || parsed.data.length < 2) {
         return NextResponse.json(
-          { error: `Sheet "${sheetName}" not found. Check the sheet name or spreadsheet ID.` },
-          { status: 404 }
+          { error: 'Sheet is empty or has no data rows (need header + at least 1 data row).' },
+          { status: 400 }
         );
       }
-      return NextResponse.json(
-        { error: `Google Sheets API error: ${sheetsResponse.status} - ${errorText}` },
-        { status: sheetsResponse.status }
-      );
+
+      headers = parsed.data[0].map(h => String(h).trim().toLowerCase().replace(/\s+/g, '_'));
+      dataRows = parsed.data.slice(1);
     }
 
-    const sheetsData = await sheetsResponse.json();
-    const rows = sheetsData.values;
-
-    if (!rows || rows.length < 2) {
-      return NextResponse.json(
-        { error: 'Sheet is empty or has no data rows (need header + at least 1 data row).' },
-        { status: 400 }
-      );
-    }
-
-    // First row is headers
-    const headers = rows[0].map(h => h.trim().toLowerCase().replace(/\s+/g, '_'));
-    const dataRows = rows.slice(1);
-
-    // Find the name and phone column indices
+    // Find name and phone columns
     const nameIdx = headers.indexOf(nameColumn.toLowerCase().replace(/\s+/g, '_'));
     const phoneIdx = headers.indexOf(phoneColumn.toLowerCase().replace(/\s+/g, '_'));
 
-    // Fallback: try common column names
     const nameColIdx = nameIdx >= 0 ? nameIdx :
       headers.findIndex(h => ['name', 'full_name', 'fullname', 'attendee_name', 'attendee'].includes(h));
     const phoneColIdx = phoneIdx >= 0 ? phoneIdx :
@@ -95,26 +92,23 @@ export async function POST(request) {
       );
     }
 
-    // Parse rows into leads
-    const supabase = createAdminClient();
     const leads = [];
     const skipped = [];
 
     for (let i = 0; i < dataRows.length; i++) {
       const row = dataRows[i];
-      const name = (row[nameColIdx] || '').trim();
-      const phone = (row[phoneColIdx] || '').trim();
+      const name = (row[nameColIdx] || '').toString().trim();
+      const phone = (row[phoneColIdx] || '').toString().trim();
 
       if (!name || !phone) {
-        skipped.push(i + 2); // +2 for 1-indexed + header row
+        skipped.push(i + 2);
         continue;
       }
 
-      // Build metadata from remaining columns
       const metadata = {};
       headers.forEach((header, idx) => {
-        if (idx !== nameColIdx && idx !== phoneColIdx && row[idx] && row[idx].trim()) {
-          metadata[header] = row[idx].trim();
+        if (idx !== nameColIdx && idx !== phoneColIdx && row[idx] && String(row[idx]).trim()) {
+          metadata[header] = String(row[idx]).trim();
         }
       });
 
@@ -123,7 +117,7 @@ export async function POST(request) {
         full_name: name,
         phone_number: phone,
         phone_hash: Buffer.from(phone).toString('base64'),
-        metadata: Object.keys(metadata).length > 0 ? metadata : {},
+        metadata: metadata,
       });
     }
 
@@ -134,28 +128,26 @@ export async function POST(request) {
       );
     }
 
-    // Insert in batches of 100
+    // Insert leads into Neon PostgreSQL in batches
     let imported = 0;
-    let duplicates = 0;
-
-    for (let i = 0; i < leads.length; i += 100) {
-      const batch = leads.slice(i, i + 100);
-      const { data, error, count } = await supabase
-        .from('leads')
-        .upsert(batch, {
-          onConflict: 'campaign_id,phone_hash',
-          ignoreDuplicates: true,
-        })
-        .select('id');
-
-      if (error) {
-        return NextResponse.json(
-          { error: `Import error at batch ${Math.floor(i / 100) + 1}: ${error.message}`, imported },
-          { status: 500 }
+    for (const lead of leads) {
+      try {
+        await query(
+          `INSERT INTO leads (campaign_id, full_name, phone_number, phone_hash, metadata, status)
+           VALUES ($1, $2, $3, $4, $5, 'pending')
+           ON CONFLICT (campaign_id, phone_hash) DO NOTHING`,
+          [
+            lead.campaign_id,
+            lead.full_name,
+            lead.phone_number,
+            lead.phone_hash,
+            JSON.stringify(lead.metadata),
+          ]
         );
+        imported++;
+      } catch (insertErr) {
+        console.error('Insert lead error:', insertErr);
       }
-
-      imported += data?.length || batch.length;
     }
 
     return NextResponse.json({
@@ -163,7 +155,7 @@ export async function POST(request) {
       imported,
       skipped: skipped.length,
       total: dataRows.length,
-      message: `✅ Imported ${imported} leads from Google Sheet. ${skipped.length > 0 ? `${skipped.length} rows skipped (missing data).` : ''}`,
+      message: `✅ Imported ${imported} leads from Google Sheet! ${skipped.length > 0 ? `(${skipped.length} skipped)` : ''}`,
     });
   } catch (err) {
     console.error('Google Sheets import error:', err);

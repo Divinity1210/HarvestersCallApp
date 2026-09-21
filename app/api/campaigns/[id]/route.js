@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
 
 /**
  * PUT /api/campaigns/[id]
@@ -16,28 +16,42 @@ export async function PUT(request, { params }) {
       'status', 'retention_days',
     ];
 
-    const updates = {};
+    const updates = [];
+    const values = [];
+    let paramIndex = 1;
+
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
-        updates[field] = body[field];
+        let val = body[field];
+        if (field === 'next_steps_options' && Array.isArray(val)) {
+          val = JSON.stringify(val);
+        }
+        updates.push(`${field} = $${paramIndex}`);
+        values.push(val);
+        paramIndex++;
       }
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (updates.length === 0) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
-    const { data, error } = await supabase
-      .from('campaigns')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
+    updates.push(`updated_at = now()`);
+    values.push(id);
 
-    if (error) throw error;
+    const updateSql = `
+      UPDATE campaigns 
+      SET ${updates.join(', ')} 
+      WHERE id = $${paramIndex} 
+      RETURNING *
+    `;
 
-    return NextResponse.json({ success: true, campaign: data });
+    const rows = await query(updateSql, values);
+    if (rows.length === 0) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, campaign: rows[0] });
   } catch (err) {
     console.error('Campaign update error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -46,24 +60,24 @@ export async function PUT(request, { params }) {
 
 /**
  * DELETE /api/campaigns/[id]
- * Soft-delete: set status to 'completed'. Hard delete only if no calls exist.
+ * Hard delete campaign and cascade its leads.
  */
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
-    const supabase = createAdminClient();
 
-    // Always perform a hard delete
-    // First delete leads (calls will have their campaign_id set to NULL automatically due to ON DELETE SET NULL)
-    await supabase.from('leads').delete().eq('campaign_id', id);
-    // Then delete campaign
-    const { error } = await supabase.from('campaigns').delete().eq('id', id);
-    if (error) throw error;
+    // Delete leads first (if not cascading)
+    await query(`DELETE FROM leads WHERE campaign_id = $1`, [id]);
+    // Delete campaign
+    const rows = await query(`DELETE FROM campaigns WHERE id = $1 RETURNING id`, [id]);
+
+    if (rows.length === 0) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Campaign and its leads permanently deleted.',
-      archived: false,
     });
   } catch (err) {
     console.error('Campaign delete error:', err);
@@ -78,46 +92,41 @@ export async function DELETE(request, { params }) {
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
-    const supabase = createAdminClient();
 
-    const { data: campaign, error } = await supabase
-      .from('campaigns')
-      .select('*')
-      .eq('id', id)
-      .single();
+    const rows = await query(
+      `SELECT c.*,
+        COUNT(l.id)::int as total_leads,
+        COUNT(l.id) FILTER (WHERE l.status = 'completed')::int as completed_leads,
+        COUNT(l.id) FILTER (WHERE l.status = 'pending')::int as pending_leads
+       FROM campaigns c
+       LEFT JOIN leads l ON l.campaign_id = c.id
+       WHERE c.id = $1
+       GROUP BY c.id`,
+      [id]
+    );
 
-    if (error) throw error;
+    if (rows.length === 0) {
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+    }
 
-    // Get lead counts
-    const { count: totalLeads } = await supabase
-      .from('leads')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', id);
-
-    const { count: completedLeads } = await supabase
-      .from('leads')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', id)
-      .eq('status', 'completed');
-
-    const { count: pendingLeads } = await supabase
-      .from('leads')
-      .select('*', { count: 'exact', head: true })
-      .eq('campaign_id', id)
-      .eq('status', 'pending');
+    const campaign = rows[0];
+    const totalLeads = campaign.total_leads || 0;
+    const completedLeads = campaign.completed_leads || 0;
+    const pendingLeads = campaign.pending_leads || 0;
 
     return NextResponse.json({
       ...campaign,
       stats: {
-        totalLeads: totalLeads || 0,
-        completedLeads: completedLeads || 0,
-        pendingLeads: pendingLeads || 0,
+        totalLeads,
+        completedLeads,
+        pendingLeads,
         progressPercent: totalLeads > 0
           ? Math.round((completedLeads / totalLeads) * 100)
           : 0,
       },
     });
   } catch (err) {
+    console.error('Campaign fetch error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

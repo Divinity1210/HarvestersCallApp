@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import TranscriptViewer from '@/components/TranscriptViewer';
 import AudioPlayer from '@/components/AudioPlayer';
 
@@ -13,26 +12,18 @@ export default function CallLogsPage() {
 
   useEffect(() => {
     const fetchCalls = async () => {
-      let query = supabase
-        .from('calls')
-        .select(`
-          *,
-          leads:lead_id (full_name),
-          agent_profiles:agent_id (full_name),
-          qa_results (*)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (filter === 'completed') query = query.eq('call_status', 'completed');
-      if (filter === 'flagged') query = query.not('qa_results', 'is', null);
-
-      const { data, error } = await query;
-
-      if (!error) {
-        setCalls(data || []);
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/admin/calls?filter=${filter}`);
+        const data = await res.json();
+        if (data?.calls) {
+          setCalls(data.calls);
+        }
+      } catch (err) {
+        console.error('Error fetching calls:', err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     fetchCalls();

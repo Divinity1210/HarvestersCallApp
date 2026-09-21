@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/lib/supabase';
 import styles from './agents.module.css';
 
 const ROLE_OPTIONS = [
@@ -32,27 +31,17 @@ export default function AgentManagementPage() {
 
   const fetchAgents = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('agent_profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (data) {
-      // Fetch call counts for each agent
-      const agentIds = data.map(a => a.id);
-      const { data: callCounts } = await supabase
-        .from('calls')
-        .select('agent_id')
-        .in('agent_id', agentIds);
-
-      const countMap = {};
-      (callCounts || []).forEach(c => {
-        countMap[c.agent_id] = (countMap[c.agent_id] || 0) + 1;
-      });
-
-      setAgents(data.map(a => ({ ...a, callCount: countMap[a.id] || 0 })));
+    try {
+      const res = await fetch('/api/agents');
+      const data = await res.json();
+      if (data?.agents) {
+        setAgents(data.agents);
+      }
+    } catch (err) {
+      console.error('Error fetching agents:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   /** Send invite */
@@ -110,12 +99,13 @@ export default function AgentManagementPage() {
 
   /** Toggle agent active status */
   const handleToggleActive = async (agentId, currentActive) => {
-    const { error } = await supabase
-      .from('agent_profiles')
-      .update({ is_active: !currentActive })
-      .eq('id', agentId);
+    const res = await fetch('/api/agents/update-role', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId, isActive: !currentActive }),
+    });
 
-    if (!error) {
+    if (res.ok) {
       setAgents(prev => prev.map(a =>
         a.id === agentId ? { ...a, is_active: !currentActive } : a
       ));

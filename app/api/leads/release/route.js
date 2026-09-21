@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
 
 /**
  * POST /api/leads/release
- * Releases a locked lead (e.g., when agent navigates away or skips).
+ * Releases a locked lead back to pending.
  */
 export async function POST(request) {
   try {
@@ -13,21 +13,12 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Lead ID required' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
-
-    const { error } = await supabase
-      .from('leads')
-      .update({
-        status: 'pending',
-        locked_by: null,
-        locked_at: null,
-      })
-      .eq('id', leadId)
-      .eq('status', 'locked');
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    await query(
+      `UPDATE leads
+       SET status = 'pending', locked_by = NULL, locked_at = NULL, updated_at = now()
+       WHERE id = $1 AND status = 'locked'`,
+      [leadId]
+    );
 
     return NextResponse.json({ success: true });
   } catch (err) {

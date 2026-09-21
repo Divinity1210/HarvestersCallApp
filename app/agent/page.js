@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useCall } from '@/hooks/useCall';
 import { useLead } from '@/hooks/useLead';
-import { supabase } from '@/lib/supabase';
 import ScriptDisplay from '@/components/ScriptDisplay';
 import CallDialer, { CallActionBar } from '@/components/CallDialer';
 import LeadCard from '@/components/LeadCard';
@@ -27,15 +26,16 @@ export default function AgentDashboard() {
   // Fetch active campaigns
   useEffect(() => {
     const fetchCampaigns = async () => {
-      const { data } = await supabase
-        .from('campaigns')
-        .select('id, name, description, script_template, next_steps_options, status')
-        .eq('status', 'active')
-        .order('created_at', { ascending: false });
-
-      if (data && data.length > 0) {
-        setCampaigns(data);
-        setSelectedCampaign(data[0]);
+      try {
+        const res = await fetch('/api/campaigns');
+        const data = await res.json();
+        const active = (data?.campaigns || []).filter(c => c.status === 'active');
+        if (active.length > 0) {
+          setCampaigns(active);
+          setSelectedCampaign(active[0]);
+        }
+      } catch (err) {
+        console.error('Error fetching campaigns:', err);
       }
     };
 
@@ -46,23 +46,18 @@ export default function AgentDashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       if (!profile?.id) return;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const { data } = await supabase
-        .from('calls')
-        .select('*', { count: 'exact' })
-        .eq('agent_id', profile.id)
-        .gte('created_at', today.toISOString());
-
-      if (data) {
-        const completed = data.filter(c => c.call_status === 'completed');
-        const totalDuration = completed.reduce((sum, c) => sum + (c.duration_seconds || 0), 0);
-        setAgentStats({
-          callsToday: data.length,
-          completedToday: completed.length,
-          avgDuration: completed.length > 0 ? Math.round(totalDuration / completed.length) : 0,
-        });
+      try {
+        const res = await fetch('/api/agent/stats?period=today');
+        const data = await res.json();
+        if (data?.stats) {
+          setAgentStats({
+            callsToday: data.stats.totalCalls || 0,
+            completedToday: data.stats.completedCalls || 0,
+            avgDuration: data.stats.avgDuration || 0,
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching agent stats:', err);
       }
     };
 

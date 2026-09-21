@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
 
 /**
  * POST /api/calls/submit-results
@@ -14,45 +14,44 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Call ID required' }, { status: 400 });
     }
 
-    const supabase = createAdminClient();
-
     // Update the call record
-    await supabase
-      .from('calls')
-      .update({
-        agent_disposition: agentDisposition || 'completed',
-      })
-      .eq('id', callId);
+    await query(
+      `UPDATE calls 
+       SET agent_disposition = $1 
+       WHERE id = $2`,
+      [agentDisposition || 'completed', callId]
+    );
 
     // Update QA results if this was a connected call
     if (!noAnswer && (nextStepsConfirmed || testimonyConfirmed)) {
-      await supabase
-        .from('qa_results')
-        .update({
-          next_steps_confirmed: nextStepsConfirmed || [],
-          testimony_confirmed: testimonyConfirmed || '',
-        })
-        .eq('call_id', callId);
+      await query(
+        `UPDATE qa_results 
+         SET next_steps_confirmed = $1, testimony_confirmed = $2 
+         WHERE call_id = $3`,
+        [
+          JSON.stringify(nextStepsConfirmed || []),
+          testimonyConfirmed || '',
+          callId,
+        ]
+      );
     }
 
-    // Get the call to find the lead
-    const { data: callData } = await supabase
-      .from('calls')
-      .select('lead_id')
-      .eq('id', callId)
-      .single();
+    // Get lead_id from the call
+    const callRows = await query(
+      `SELECT lead_id FROM calls WHERE id = $1 LIMIT 1`,
+      [callId]
+    );
 
-    // Update lead status
-    if (callData?.lead_id) {
+    if (callRows.length > 0 && callRows[0].lead_id) {
+      const leadId = callRows[0].lead_id;
       const leadStatus = noAnswer ? 'no_answer' : 'completed';
-      await supabase
-        .from('leads')
-        .update({
-          status: leadStatus,
-          locked_by: null,
-          locked_at: null,
-        })
-        .eq('id', callData.lead_id);
+
+      await query(
+        `UPDATE leads 
+         SET status = $1, locked_by = NULL, locked_at = NULL, updated_at = now() 
+         WHERE id = $2`,
+        [leadStatus, leadId]
+      );
     }
 
     return NextResponse.json({ success: true });

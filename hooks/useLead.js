@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { supabase } from '@/lib/supabase';
 import { LEAD_STATUS } from '@/lib/constants';
 
 /**
@@ -85,13 +84,10 @@ export function useLead() {
 
     const poll = async () => {
       try {
-        const { data, error: pollError } = await supabase
-          .from('qa_results')
-          .select('*')
-          .eq('call_id', callId)
-          .single();
+        const res = await fetch(`/api/calls/${callId}/qa`);
+        if (!res.ok) throw new Error('Failed to fetch QA status');
 
-        if (pollError && pollError.code !== 'PGRST116') throw pollError;
+        const { qa: data } = await res.json();
 
         if (data && data.processing_status === 'complete') {
           setQaResults(data);

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import Leaderboard from '@/components/Leaderboard';
 import styles from './admin.module.css';
 
@@ -23,69 +22,15 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
-        // Fetch campaigns
-        const { data: campaignData } = await supabase
-          .from('campaigns')
-          .select('*')
-          .order('created_at', { ascending: false });
+        const res = await fetch('/api/admin/stats');
+        const data = await res.json();
 
-        setCampaigns(campaignData || []);
-
-        // Fetch aggregate stats
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        // Total leads
-        const { count: totalLeads } = await supabase
-          .from('leads')
-          .select('*', { count: 'exact', head: true });
-
-        // Completed leads
-        const { count: completedLeads } = await supabase
-          .from('leads')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'completed');
-
-        // Pending leads
-        const { count: pendingLeads } = await supabase
-          .from('leads')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending');
-
-        // Calls today
-        const { data: callsToday } = await supabase
-          .from('calls')
-          .select('duration_seconds, call_status')
-          .gte('created_at', today.toISOString());
-
-        const connected = (callsToday || []).filter(c => c.call_status === 'completed');
-        const totalDuration = connected.reduce((s, c) => s + (c.duration_seconds || 0), 0);
-
-        // QA stats
-        const { data: qaData } = await supabase
-          .from('qa_results')
-          .select('script_adherence_score, flagged, testimony_confirmed')
-          .not('script_adherence_score', 'is', null);
-
-        const scores = (qaData || []).filter(q => q.script_adherence_score != null);
-        const avgScore = scores.length > 0
-          ? scores.reduce((s, q) => s + q.script_adherence_score, 0) / scores.length
-          : 0;
-
-        const flagged = (qaData || []).filter(q => q.flagged).length;
-        const testimonies = (qaData || []).filter(q => q.testimony_confirmed && q.testimony_confirmed.trim() !== '').length;
-
-        setStats({
-          totalLeads: totalLeads || 0,
-          completedLeads: completedLeads || 0,
-          pendingLeads: pendingLeads || 0,
-          totalCalls: callsToday?.length || 0,
-          connectedCalls: connected.length,
-          avgDuration: connected.length > 0 ? Math.round(totalDuration / connected.length) : 0,
-          avgScriptScore: Math.round(avgScore),
-          flaggedCalls: flagged,
-          testimoniesCount: testimonies,
-        });
+        if (data?.stats) {
+          setStats(data.stats);
+        }
+        if (data?.campaigns) {
+          setCampaigns(data.campaigns);
+        }
       } catch (err) {
         console.error('Dashboard fetch error:', err);
       } finally {

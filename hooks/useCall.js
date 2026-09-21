@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { CALL_STATUS } from '@/lib/constants';
 
 /**

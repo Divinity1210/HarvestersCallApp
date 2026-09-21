@@ -1,43 +1,51 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
 
 /**
  * POST /api/agents/update-role
- * Updates an agent's role. Only admins can call this.
- *
- * Expected body: { agentId, role }
+ * Updates an agent's role or status.
  */
 export async function POST(request) {
   try {
-    const { agentId, role } = await request.json();
+    const { agentId, role, isActive } = await request.json();
 
-    if (!agentId || !role) {
-      return NextResponse.json(
-        { error: 'agentId and role are required' },
-        { status: 400 }
-      );
+    if (!agentId) {
+      return NextResponse.json({ error: 'agentId is required' }, { status: 400 });
     }
 
-    const validRoles = ['agent', 'admin', 'super_admin'];
-    if (!validRoles.includes(role)) {
-      return NextResponse.json(
-        { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
-        { status: 400 }
-      );
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (role) {
+      const validRoles = ['agent', 'admin', 'super_admin'];
+      if (!validRoles.includes(role)) {
+        return NextResponse.json({ error: `Invalid role: ${role}` }, { status: 400 });
+      }
+      updates.push(`role = $${idx++}`);
+      values.push(role);
     }
 
-    const supabase = createAdminClient();
+    if (isActive !== undefined) {
+      updates.push(`is_active = $${idx++}`);
+      values.push(Boolean(isActive));
+    }
 
-    const { error } = await supabase
-      .from('agent_profiles')
-      .update({ role })
-      .eq('id', agentId);
+    if (updates.length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    }
 
-    if (error) throw error;
+    updates.push(`updated_at = now()`);
+    values.push(agentId);
+
+    await query(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = $${idx}`,
+      values
+    );
 
     return NextResponse.json({
       success: true,
-      message: `Role updated to ${role}`,
+      message: 'Agent updated successfully',
     });
   } catch (err) {
     console.error('Update role error:', err);

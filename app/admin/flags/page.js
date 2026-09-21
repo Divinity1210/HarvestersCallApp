@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import TranscriptViewer from '@/components/TranscriptViewer';
 import AudioPlayer from '@/components/AudioPlayer';
@@ -16,46 +15,38 @@ export default function RedFlagsPage() {
 
   useEffect(() => {
     const fetchFlags = async () => {
-      let query = supabase
-        .from('qa_results')
-        .select(`
-          *,
-          calls:call_id (
-            *,
-            leads:lead_id (full_name),
-            agent_profiles:agent_id (full_name)
-          )
-        `)
-        .eq('flagged', true)
-        .order('created_at', { ascending: false });
-
-      if (filter === 'unreviewed') query = query.eq('reviewed', false);
-      if (filter === 'reviewed') query = query.eq('reviewed', true);
-
-      const { data, error } = await query;
-      if (!error) setFlaggedCalls(data || []);
-      setLoading(false);
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/admin/flags?filter=${filter}`);
+        const data = await res.json();
+        if (data?.flags) setFlaggedCalls(data.flags);
+      } catch (err) {
+        console.error('Error fetching flags:', err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     fetchFlags();
   }, [filter]);
 
   const handleMarkReviewed = async (qaId) => {
-    const { error } = await supabase
-      .from('qa_results')
-      .update({
-        reviewed: true,
-        reviewed_by: profile?.id,
-        review_notes: reviewNotes,
-      })
-      .eq('id', qaId);
+    try {
+      const res = await fetch('/api/admin/flags/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ qaId, reviewNotes }),
+      });
 
-    if (!error) {
-      setFlaggedCalls(prev => prev.map(f =>
-        f.id === qaId ? { ...f, reviewed: true, review_notes: reviewNotes } : f
-      ));
-      setSelectedFlag(null);
-      setReviewNotes('');
+      if (res.ok) {
+        setFlaggedCalls(prev => prev.map(f =>
+          f.id === qaId ? { ...f, reviewed: true, review_notes: reviewNotes } : f
+        ));
+        setSelectedFlag(null);
+        setReviewNotes('');
+      }
+    } catch (err) {
+      console.error('Error reviewing flag:', err);
     }
   };
 

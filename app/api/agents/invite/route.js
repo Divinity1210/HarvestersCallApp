@@ -1,25 +1,26 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
+import { hashPassword } from '@/lib/auth';
 
 /**
  * POST /api/agents/invite
- * Creates a new user account and agent profile via Supabase Admin API.
- * The user will receive an email invite to set their password.
- *
- * Expected body: { email, fullName, role? }
+ * Creates a new volunteer agent or admin account in Neon PostgreSQL.
  */
 export async function POST(request) {
   try {
-    const { email, fullName, role = 'agent' } = await request.json();
+    const { email, fullName, role = 'agent', password = 'Welcome2026!' } = await request.json();
 
     if (!email || !fullName) {
       return NextResponse.json(
-        { error: 'email and fullName are required' },
+        { error: 'Email and Full Name are required' },
         { status: 400 }
       );
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = fullName.trim();
     const validRoles = ['agent', 'admin', 'super_admin'];
+
     if (!validRoles.includes(role)) {
       return NextResponse.json(
         { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -27,51 +28,32 @@ export async function POST(request) {
       );
     }
 
-    const supabase = createAdminClient();
+    // Check if user exists
+    const existing = await query(
+      `SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+      [cleanEmail]
+    );
 
-    // Create the user via Admin API (sends invite email automatically)
-    const { data: userData, error: createError } = await supabase.auth.admin.createUser({
-      email,
-      email_confirm: false, // User must confirm via email
-      user_metadata: {
-        full_name: fullName,
-      },
-    });
-
-    if (createError) {
-      // Check for duplicate
-      if (createError.message?.includes('already been registered') || createError.message?.includes('already exists')) {
-        return NextResponse.json(
-          { error: 'A user with this email already exists.' },
-          { status: 409 }
-        );
-      }
-      throw createError;
+    if (existing.length > 0) {
+      return NextResponse.json(
+        { error: 'A user with this email already exists.' },
+        { status: 409 }
+      );
     }
 
-    // Update the agent's role if not default 'agent'
-    // (The DB trigger creates the profile with 'agent' role)
-    if (role !== 'agent' && userData?.user?.id) {
-      await supabase
-        .from('agent_profiles')
-        .update({ role })
-        .eq('id', userData.user.id);
-    }
+    const passwordHash = await hashPassword(password);
 
-    // Send password reset email so user can set their password
-    const { error: resetError } = await supabase.auth.admin.generateLink({
-      type: 'invite',
-      email,
-    });
-
-    if (resetError) {
-      console.warn('Could not send invite link:', resetError.message);
-    }
+    const rows = await query(
+      `INSERT INTO users (email, password_hash, full_name, role, is_active)
+       VALUES ($1, $2, $3, $4, true)
+       RETURNING id, email, full_name, role`,
+      [cleanEmail, passwordHash, cleanName, role]
+    );
 
     return NextResponse.json({
       success: true,
-      message: `Invite sent to ${email}. They'll receive an email to set their password.`,
-      userId: userData?.user?.id,
+      message: `User created successfully! Temporary password: ${password}`,
+      user: rows[0],
     });
   } catch (err) {
     console.error('Agent invite error:', err);

@@ -1,99 +1,108 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { query } from '@/lib/db';
 import { QA_THRESHOLDS, FLAG_TYPES } from '@/lib/constants';
 
 /**
  * POST /api/ai/process-call
  * Core AI pipeline: Transcription (Deepgram) → Analysis (Gemini) → Red Flags → Save.
- * This is triggered by the recording-status webhook after a call completes.
+ * Triggered after a call completes.
  */
 export async function POST(request) {
-  const supabase = createAdminClient();
+  let activeCallId = null;
 
   try {
     const { callId, recordingUrl, campaignId } = await request.json();
+    activeCallId = callId;
 
     if (!callId || !recordingUrl) {
       return NextResponse.json({ error: 'callId and recordingUrl required' }, { status: 400 });
     }
 
-    // Update QA status to 'transcribing'
-    await supabase
-      .from('qa_results')
-      .update({ processing_status: 'transcribing' })
-      .eq('call_id', callId);
+    // Ensure qa_results record exists and mark as transcribing
+    await query(
+      `INSERT INTO qa_results (call_id, processing_status)
+       VALUES ($1, 'transcribing')
+       ON CONFLICT (call_id) DO UPDATE SET processing_status = 'transcribing'`,
+      [callId]
+    );
 
     // --- STEP 1: Transcribe with Deepgram ---
     const transcript = await transcribeWithDeepgram(recordingUrl);
 
     // Update QA status to 'analyzing'
-    await supabase
-      .from('qa_results')
-      .update({ processing_status: 'analyzing' })
-      .eq('call_id', callId);
+    await query(
+      `UPDATE qa_results SET processing_status = 'analyzing' WHERE call_id = $1`,
+      [callId]
+    );
 
     // --- STEP 2: Get campaign script for AI analysis ---
-    const { data: campaign } = await supabase
-      .from('campaigns')
-      .select('script_template, next_steps_options')
-      .eq('id', campaignId)
-      .single();
+    const campaignRows = await query(
+      `SELECT script_template, next_steps_options FROM campaigns WHERE id = $1 LIMIT 1`,
+      [campaignId]
+    );
+    const campaign = campaignRows[0] || {};
+    const nextSteps = Array.isArray(campaign.next_steps_options)
+      ? campaign.next_steps_options
+      : (typeof campaign.next_steps_options === 'string' ? JSON.parse(campaign.next_steps_options) : []);
 
     // --- STEP 3: Analyze with Gemini Flash ---
     const analysis = await analyzeWithGemini(
       transcript.text,
       campaign?.script_template || '',
-      campaign?.next_steps_options || []
+      nextSteps
     );
 
     // --- STEP 4: Detect Red Flags ---
-    const { data: callData } = await supabase
-      .from('calls')
-      .select('duration_seconds, call_status')
-      .eq('id', callId)
-      .single();
-
-    const flags = detectRedFlags(
-      callData,
-      transcript,
-      analysis
+    const callRows = await query(
+      `SELECT duration_seconds, call_status FROM calls WHERE id = $1 LIMIT 1`,
+      [callId]
     );
+    const callData = callRows[0] || {};
 
-    // --- STEP 5: Save everything ---
-    const { error: saveError } = await supabase
-      .from('qa_results')
-      .update({
-        transcript_raw: transcript.text,
-        transcript_summary: analysis.summary,
-        transcription_provider: 'deepgram',
-        transcription_confidence: transcript.confidence,
-        next_steps_extracted: analysis.nextSteps,
-        testimony_extracted: analysis.testimony,
-        script_adherence_score: analysis.scriptAdherence,
-        script_adherence_details: analysis.scriptAdherenceDetails,
-        flags: flags,
-        flagged: flags.length > 0,
-        processing_status: 'complete',
-        processed_at: new Date().toISOString(),
-      })
-      .eq('call_id', callId);
+    const flags = detectRedFlags(callData, transcript, analysis);
 
-    if (saveError) {
-      throw saveError;
-    }
+    // --- STEP 5: Save everything to qa_results ---
+    await query(
+      `UPDATE qa_results SET 
+        transcript_raw = $1,
+        transcript_summary = $2,
+        transcription_provider = 'deepgram',
+        transcription_confidence = $3,
+        next_steps_extracted = $4,
+        testimony_extracted = $5,
+        script_adherence_score = $6,
+        script_adherence_details = $7,
+        flags = $8,
+        flagged = $9,
+        processing_status = 'complete',
+        processed_at = now()
+       WHERE call_id = $10`,
+      [
+        transcript.text,
+        analysis.summary,
+        transcript.confidence,
+        JSON.stringify(analysis.nextSteps || []),
+        analysis.testimony || '',
+        analysis.scriptAdherence,
+        JSON.stringify(analysis.scriptAdherenceDetails || {}),
+        JSON.stringify(flags),
+        flags.length > 0,
+        callId,
+      ]
+    );
 
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('AI processing error:', err);
 
-    // Mark as error so the agent isn't left waiting
-    await supabase
-      .from('qa_results')
-      .update({
-        processing_status: 'error',
-        error_message: err.message,
-      })
-      .eq('call_id', request.callId || '');
+    if (activeCallId) {
+      await query(
+        `UPDATE qa_results 
+         SET processing_status = 'error', error_message = $1 
+         WHERE call_id = $2`,
+        [err.message, activeCallId]
+      ).catch(() => {});
+    }
 
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
@@ -101,7 +110,6 @@ export async function POST(request) {
 
 /**
  * Transcribe audio using Deepgram Nova-3 API.
- * Returns: { text: string, confidence: number, utterances: array }
  */
 async function transcribeWithDeepgram(audioUrl) {
   const apiKey = process.env.DEEPGRAM_API_KEY;
@@ -133,7 +141,6 @@ async function transcribeWithDeepgram(audioUrl) {
   const data = await response.json();
   const results = data.results;
 
-  // Build full transcript with speaker labels
   let fullText = '';
   if (results?.utterances) {
     fullText = results.utterances
@@ -143,7 +150,6 @@ async function transcribeWithDeepgram(audioUrl) {
     fullText = results.channels[0].alternatives[0].transcript;
   }
 
-  // Average confidence
   const confidence = results?.channels?.[0]?.alternatives?.[0]?.confidence || 0;
 
   return {
@@ -154,8 +160,7 @@ async function transcribeWithDeepgram(audioUrl) {
 }
 
 /**
- * Analyze transcript using Google Gemini 2.5 Flash API.
- * Extracts: next steps, testimony, script adherence, summary.
+ * Analyze transcript using Google Gemini Flash API.
  */
 async function analyzeWithGemini(transcript, scriptTemplate, nextStepsOptions) {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
@@ -171,7 +176,7 @@ Analyze the following call transcript between a Call Agent and an Attendee who a
 ${scriptTemplate || 'No script provided'}
 
 ## Available Next Steps Options:
-${nextStepsOptions.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+${(nextStepsOptions || []).map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
 ## Call Transcript:
 ${transcript || 'No transcript available'}
@@ -180,11 +185,7 @@ ${transcript || 'No transcript available'}
 1. **Summary**: Provide a concise 2-3 sentence summary of the call.
 2. **Next Steps**: Based ONLY on what the ATTENDEE verbally agreed to, list which Next Steps they committed to. Only include steps the attendee explicitly confirmed. Return the exact strings from the options list.
 3. **Testimony**: If the attendee shared a testimony or positive experience from the conference, extract and summarize it in max 3 sentences. If no testimony was shared, return an empty string.
-4. **Script Adherence Score**: Rate 0-100 how closely the agent followed the campaign script. Consider:
-   - Did they introduce themselves properly?
-   - Did they mention key phrases/names from the script?
-   - Did they cover all required sections?
-   - Did they maintain a professional, pastoral tone?
+4. **Script Adherence Score**: Rate 0-100 how closely the agent followed the campaign script.
 5. **Script Adherence Details**: Provide a breakdown of which script sections were covered vs. missed.
 
 Respond in the following JSON format only (no markdown, no code blocks):
@@ -207,9 +208,7 @@ Respond in the following JSON format only (no markdown, no code blocks):
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }],
-        }],
+        contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.1,
           maxOutputTokens: 2048,
@@ -240,8 +239,7 @@ Respond in the following JSON format only (no markdown, no code blocks):
       scriptAdherence: parsed.scriptAdherence || 0,
       scriptAdherenceDetails: parsed.scriptAdherenceDetails || {},
     };
-  } catch (parseErr) {
-    console.error('Failed to parse Gemini response:', text);
+  } catch {
     return {
       summary: 'AI analysis could not parse the response.',
       nextSteps: [],
@@ -258,7 +256,6 @@ Respond in the following JSON format only (no markdown, no code blocks):
 function detectRedFlags(callData, transcript, analysis) {
   const flags = [];
 
-  // Short call flag
   if (callData?.duration_seconds != null &&
       callData.duration_seconds < QA_THRESHOLDS.MIN_CALL_DURATION_SECONDS &&
       callData.call_status === 'completed') {
@@ -269,7 +266,6 @@ function detectRedFlags(callData, transcript, analysis) {
     });
   }
 
-  // Low script adherence flag
   if (analysis.scriptAdherence < QA_THRESHOLDS.MIN_SCRIPT_ADHERENCE_PERCENT) {
     flags.push({
       type: FLAG_TYPES.LOW_ADHERENCE,
@@ -278,7 +274,6 @@ function detectRedFlags(callData, transcript, analysis) {
     });
   }
 
-  // No attendee speech flag (possible fake call)
   const attendeeSpeech = transcript.utterances?.filter(u => u.speaker === 1) || [];
   const totalAttendeeWords = attendeeSpeech.reduce(
     (sum, u) => sum + (u.transcript?.split(/\s+/).length || 0), 0
