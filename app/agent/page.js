@@ -6,7 +6,7 @@ import { useCall } from '@/hooks/useCall';
 import { useLead } from '@/hooks/useLead';
 import { supabase } from '@/lib/supabase';
 import ScriptDisplay from '@/components/ScriptDisplay';
-import CallDialer from '@/components/CallDialer';
+import CallDialer, { CallActionBar } from '@/components/CallDialer';
 import LeadCard from '@/components/LeadCard';
 import AIResultsPanel from '@/components/AIResultsPanel';
 import styles from './agent.module.css';
@@ -20,6 +20,9 @@ export default function AgentDashboard() {
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [agentStats, setAgentStats] = useState({ callsToday: 0, completedToday: 0, avgDuration: 0 });
   const [showResults, setShowResults] = useState(false);
+  
+  // Mobile tab state: 'call' | 'script' | 'results'
+  const [mobileTab, setMobileTab] = useState('call');
 
   // Fetch active campaigns
   useEffect(() => {
@@ -46,7 +49,7 @@ export default function AgentDashboard() {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const { data, count } = await supabase
+      const { data } = await supabase
         .from('calls')
         .select('*', { count: 'exact' })
         .eq('agent_id', profile.id)
@@ -74,6 +77,7 @@ export default function AgentDashboard() {
     await lead.fetchNextLead(selectedCampaign.id);
     call.resetCall();
     setShowResults(false);
+    setMobileTab('call');
   };
 
   /** Handle call end — start AI processing */
@@ -81,6 +85,7 @@ export default function AgentDashboard() {
     if (lead.currentCall?.id) {
       lead.pollForResults(lead.currentCall.id);
       setShowResults(true);
+      setMobileTab('results');
     }
   }, [lead]);
 
@@ -97,6 +102,7 @@ export default function AgentDashboard() {
     if (success) {
       setShowResults(false);
       call.resetCall();
+      setMobileTab('call');
       // Auto-fetch next lead
       if (selectedCampaign) {
         await lead.fetchNextLead(selectedCampaign.id);
@@ -113,6 +119,7 @@ export default function AgentDashboard() {
     if (success) {
       setShowResults(false);
       call.resetCall();
+      setMobileTab('call');
       // Auto-fetch next lead
       if (selectedCampaign) {
         await lead.fetchNextLead(selectedCampaign.id);
@@ -126,9 +133,12 @@ export default function AgentDashboard() {
     (call.callState === 'ended' || showResults) ? 'results' :
     'calling';
 
+  const isCallActive = call.callState === 'active' || call.callState === 'ringing' || call.callState === 'connecting';
+  const hasResults = showResults || lead.qaResults || lead.processingAI;
+
   return (
     <div className={styles.workspace}>
-      {/* Agent Stats Bar */}
+      {/* Agent Stats & Campaign Bar */}
       <div className={styles.statsBar}>
         <div className={styles.statsLeft}>
           {campaigns.length > 1 ? (
@@ -139,6 +149,7 @@ export default function AgentDashboard() {
                 const c = campaigns.find(c => c.id === e.target.value);
                 setSelectedCampaign(c);
               }}
+              aria-label="Select Campaign"
             >
               {campaigns.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -147,13 +158,13 @@ export default function AgentDashboard() {
           ) : (
             <div className={styles.campaignName}>
               <span className={styles.campaignDot}></span>
-              {selectedCampaign?.name || 'No Active Campaign'}
+              <span>{selectedCampaign?.name || 'No Active Campaign'}</span>
             </div>
           )}
         </div>
         <div className={styles.statsRight}>
           <div className={styles.statChip}>
-            <span className={styles.statChipLabel}>Calls Today</span>
+            <span className={styles.statChipLabel}>Today</span>
             <span className={styles.statChipValue}>{agentStats.callsToday}</span>
           </div>
           <div className={styles.statChip}>
@@ -161,7 +172,7 @@ export default function AgentDashboard() {
             <span className={styles.statChipValue}>{agentStats.completedToday}</span>
           </div>
           <div className={styles.statChip}>
-            <span className={styles.statChipLabel}>Avg Duration</span>
+            <span className={styles.statChipLabel}>Avg Time</span>
             <span className={styles.statChipValue}>
               {Math.floor(agentStats.avgDuration / 60)}:{(agentStats.avgDuration % 60).toString().padStart(2, '0')}
             </span>
@@ -169,10 +180,45 @@ export default function AgentDashboard() {
         </div>
       </div>
 
-      {/* Main Workspace Grid */}
+      {/* Mobile Tab Segmented Switcher (Visible on mobile screens) */}
+      <div className={styles.mobileTabNav} role="tablist" aria-label="Workspace views">
+        <button
+          className={`${styles.mobileTabBtn} ${mobileTab === 'call' ? styles.mobileTabBtnActive : ''}`}
+          onClick={() => setMobileTab('call')}
+          role="tab"
+          aria-selected={mobileTab === 'call'}
+        >
+          <span>📞</span>
+          <span>Call & Attendee</span>
+          {isCallActive && <span className={styles.tabLivePulse}></span>}
+        </button>
+        <button
+          className={`${styles.mobileTabBtn} ${mobileTab === 'script' ? styles.mobileTabBtnActive : ''}`}
+          onClick={() => setMobileTab('script')}
+          role="tab"
+          aria-selected={mobileTab === 'script'}
+        >
+          <span>📋</span>
+          <span>Script</span>
+        </button>
+        {hasResults && (
+          <button
+            className={`${styles.mobileTabBtn} ${mobileTab === 'results' ? styles.mobileTabBtnActive : ''}`}
+            onClick={() => setMobileTab('results')}
+            role="tab"
+            aria-selected={mobileTab === 'results'}
+          >
+            <span>🤖</span>
+            <span>AI Review</span>
+            {lead.processingAI && <div className="spinner spinner-sm" style={{ width: 12, height: 12 }}></div>}
+          </button>
+        )}
+      </div>
+
+      {/* Main Workspace Layout (Desktop: 3-column grid | Mobile: Tab-controlled) */}
       <div className={styles.workspaceGrid}>
         {/* Left Panel: Lead Info */}
-        <div className={styles.leftPanel}>
+        <div className={`${styles.leftPanel} ${mobileTab !== 'call' ? styles.hideOnMobile : ''}`}>
           <LeadCard
             lead={lead.currentLead}
             loading={lead.loading}
@@ -183,30 +229,35 @@ export default function AgentDashboard() {
         </div>
 
         {/* Center Panel: Script or Results */}
-        <div className={styles.centerPanel}>
-          {/* Toggle between Script and Results when results exist */}
-          {lead.currentLead && (showResults || lead.qaResults) && (
-            <div style={{
-              display: 'flex',
-              gap: 'var(--space-2)',
-              marginBottom: 'var(--space-3)',
-            }}>
+        <div className={`${styles.centerPanel} ${
+          (mobileTab === 'script' || mobileTab === 'results') ? styles.showOnMobile : styles.hideOnMobile
+        }`}>
+          {/* Desktop Toggle between Script and Results when results exist */}
+          {lead.currentLead && hasResults && (
+            <div className={styles.desktopTabSwitcher}>
               <button
-                className={`btn ${!showResults ? 'btn-primary' : 'btn-ghost'} btn-sm`}
-                onClick={() => setShowResults(false)}
+                className={`btn ${(!showResults && mobileTab !== 'results') ? 'btn-primary' : 'btn-ghost'} btn-sm`}
+                onClick={() => {
+                  setShowResults(false);
+                  setMobileTab('script');
+                }}
               >
                 📋 Call Script
               </button>
               <button
-                className={`btn ${showResults ? 'btn-primary' : 'btn-ghost'} btn-sm`}
-                onClick={() => setShowResults(true)}
+                className={`btn ${(showResults || mobileTab === 'results') ? 'btn-primary' : 'btn-ghost'} btn-sm`}
+                onClick={() => {
+                  setShowResults(true);
+                  setMobileTab('results');
+                }}
               >
                 🤖 AI Results
               </button>
             </div>
           )}
 
-          {showResults ? (
+          {/* Render either AI Results or Script */}
+          {(showResults || mobileTab === 'results') ? (
             <AIResultsPanel
               qaResults={lead.qaResults}
               processing={lead.processingAI}
@@ -225,7 +276,7 @@ export default function AgentDashboard() {
         </div>
 
         {/* Right Panel: Call Controls */}
-        <div className={styles.rightPanel}>
+        <div className={`${styles.rightPanel} ${mobileTab !== 'call' ? styles.hideOnMobile : ''}`}>
           <CallDialer
             callState={call.callState}
             formattedDuration={call.formattedDuration}
@@ -247,6 +298,19 @@ export default function AgentDashboard() {
         </div>
       </div>
 
+      {/* Persistent Floating Call Action Bar on Mobile (when reading script or results during active call) */}
+      {mobileTab !== 'call' && (
+        <CallActionBar
+          callState={call.callState}
+          formattedDuration={call.formattedDuration}
+          isMuted={call.isMuted}
+          onEndCall={call.endCall}
+          onToggleMute={call.toggleMute}
+          attendeeName={lead.currentLead?.full_name}
+          onOpenCallTab={() => setMobileTab('call')}
+        />
+      )}
+
       {/* Error Toast */}
       {(lead.error || call.callError) && (
         <div className="toast-container">
@@ -257,6 +321,7 @@ export default function AgentDashboard() {
               className="btn btn-ghost btn-sm"
               onClick={() => { lead.setError(null); }}
               style={{ marginLeft: 'auto', color: 'white' }}
+              aria-label="Dismiss error"
             >
               ✕
             </button>

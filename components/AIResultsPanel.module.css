@@ -26,6 +26,7 @@
 .section {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
@@ -65,7 +66,7 @@
 .checkboxList {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .checkboxLabel {
@@ -96,12 +97,12 @@
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: var(--space-16) var(--space-8);
+  padding: var(--space-12) var(--space-4);
   gap: var(--space-4);
 }
 
 .aiIcon {
-  font-size: 4rem;
+  font-size: 3.5rem;
   animation: float 3s ease-in-out infinite;
 }
 
@@ -127,33 +128,35 @@
 }
 
 .processingTitle {
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: 700;
 }
 
 .processingText {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--text-secondary);
-  max-width: 400px;
+  max-width: 380px;
 }
 
 .processingSteps {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: flex-start;
-  margin-top: var(--space-4);
-  padding: var(--space-4);
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   background: var(--surface-hover);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-subtle);
+  width: 100%;
+  max-width: 340px;
 }
 
 .pStep {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--text-primary);
   font-weight: 500;
 }
@@ -174,6 +177,22 @@
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: var(--space-16) var(--space-8);
+  padding: var(--space-12) var(--space-4);
   gap: var(--space-3);
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding-bottom: 120px;
+  }
+
+  .section {
+    padding: var(--space-3);
+  }
+
+  .confirmSection button {
+    height: 52px;
+    font-size: var(--text-base) !important;
+    font-weight: 700 !important;
+  }
 }

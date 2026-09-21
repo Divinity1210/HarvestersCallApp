@@ -5,7 +5,8 @@ import styles from './ScriptDisplay.module.css';
 
 /**
  * ScriptDisplay — renders the campaign script with dynamic name injection.
- * Supports markdown-like formatting: {{attendee_name}}, {{agent_name}}, **bold**, sections.
+ * Mobile-first with comfortable reading typography, sticky live banner,
+ * and high visual contrast for reading aloud during live calls.
  */
 export default function ScriptDisplay({ scriptTemplate, attendeeName, agentName, isActive }) {
   /** Process the script template with dynamic values */
@@ -47,11 +48,11 @@ export default function ScriptDisplay({ scriptTemplate, attendeeName, agentName,
   if (!scriptTemplate) {
     return (
       <div className={styles.container}>
-        <div className="empty-state">
+        <div className="empty-state" style={{ padding: 'var(--space-8) var(--space-4)' }}>
           <div className="empty-state-icon">📝</div>
           <div className="empty-state-title">No Script Loaded</div>
           <div className="empty-state-text">
-            Fetch an attendee to load the campaign script.
+            Fetch an attendee to load their tailored campaign script.
           </div>
         </div>
       </div>
@@ -60,41 +61,58 @@ export default function ScriptDisplay({ scriptTemplate, attendeeName, agentName,
 
   return (
     <div className={`${styles.container} ${isActive ? styles.active : ''}`}>
-      <div className={styles.header}>
-        <h2 className={styles.title}>📋 Call Script</h2>
+      {/* Sticky Top Banner */}
+      <div className={styles.stickyHeader}>
+        <div className={styles.headerTitleRow}>
+          <h2 className={styles.title}>📋 Call Script</h2>
+          {attendeeName && (
+            <span className={styles.attendeePill}>
+              Talking with <strong>{attendeeName}</strong>
+            </span>
+          )}
+        </div>
         {isActive && (
-          <span className="badge badge-success">
-            🔴 LIVE — Follow the script
-          </span>
+          <div className={styles.liveBanner} role="status">
+            <span className={styles.liveDot}></span>
+            <span>LIVE CALL IN PROGRESS — READ SCRIPT</span>
+          </div>
         )}
       </div>
 
+      {/* Script Sections */}
       <div className={styles.scriptBody}>
         {processedScript?.map((section, i) => (
-          <div key={i} className={styles.section} style={{ animationDelay: `${i * 0.1}s` }}>
-            <h3 className={styles.sectionTitle}>
+          <section key={i} className={styles.section} aria-labelledby={`sec-title-${i}`}>
+            <h3 id={`sec-title-${i}`} className={styles.sectionTitle}>
               <span className={styles.sectionNumber}>{i + 1}</span>
-              {section.title}
+              <span>{section.title}</span>
             </h3>
             <div className={styles.sectionContent}>
               {section.lines.map((line, j) => {
-                // Check if it's a speaker line
                 const isSpeaker = line.startsWith('SAY:') || line.startsWith('ASK:');
                 const isNote = line.startsWith('NOTE:') || line.startsWith('IF:');
                 const isAction = line.startsWith('ACTION:') || line.startsWith('DO:');
 
                 return (
-                  <p key={j} className={`${styles.line} ${
-                    isSpeaker ? styles.speakerLine :
-                    isNote ? styles.noteLine :
-                    isAction ? styles.actionLine : ''
-                  }`}>
-                    {renderLine(line)}
-                  </p>
+                  <div
+                    key={j}
+                    className={`${styles.line} ${
+                      isSpeaker ? styles.speakerLine :
+                      isNote ? styles.noteLine :
+                      isAction ? styles.actionLine : ''
+                    }`}
+                  >
+                    {isSpeaker && <span className={styles.speakIcon}>🗣️</span>}
+                    {isNote && <span className={styles.noteIcon}>💡</span>}
+                    {isAction && <span className={styles.actionIcon}>⚡</span>}
+                    <div className={styles.lineText}>
+                      {renderLine(line)}
+                    </div>
+                  </div>
                 );
               })}
             </div>
-          </div>
+          </section>
         ))}
       </div>
     </div>
@@ -106,7 +124,7 @@ function renderLine(line) {
   const parts = line.split(/(\*\*.*?\*\*)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
+      return <strong key={i} className={styles.boldText}>{part.slice(2, -2)}</strong>;
     }
     return part;
   });

@@ -1,25 +1,31 @@
 .dialer {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
-  animation: fadeIn 0.4s ease;
+  gap: var(--space-4);
+  animation: fadeIn 0.3s ease;
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .title {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 
 .deviceStatus {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
+  padding: 4px var(--space-3);
   background: var(--surface-hover);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-full);
   border: 1px solid var(--border-subtle);
 }
 
@@ -27,11 +33,12 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .statusReady {
   background: var(--color-success);
-  box-shadow: 0 0 6px rgba(16, 185, 129, 0.5);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
 }
 
 .statusNotReady {
@@ -45,16 +52,17 @@
   font-weight: 500;
 }
 
-/* Call Display */
+/* Call Display Card */
 .callDisplay {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-8) var(--space-4);
+  padding: var(--space-6) var(--space-4);
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
   overflow: hidden;
@@ -63,12 +71,16 @@
 
 .callConnecting {
   border-color: var(--color-warning);
-  box-shadow: 0 0 30px rgba(245, 158, 11, 0.1);
+  box-shadow: 0 0 24px rgba(245, 158, 11, 0.15);
 }
 
 .callActive {
   border-color: var(--color-success);
-  box-shadow: 0 0 30px rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.2);
+}
+
+.callEnded {
+  border-color: var(--border-subtle);
 }
 
 .callRing {
@@ -76,15 +88,23 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 80px;
-  height: 80px;
+  width: 90px;
+  height: 90px;
   border: 2px solid var(--color-success);
   border-radius: 50%;
   animation: pulseRing 2s ease-out infinite;
 }
 
 .callRing2 {
-  composes: callRing;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90px;
+  height: 90px;
+  border: 2px solid var(--color-success);
+  border-radius: 50%;
+  animation: pulseRing 2s ease-out infinite;
   animation-delay: 0.6s;
 }
 
@@ -98,9 +118,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
   position: relative;
   z-index: 1;
+  text-align: center;
 }
 
 .callName {
@@ -116,14 +137,28 @@
 }
 
 /* Timer */
+.timerContainer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.timerPulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-success);
+  animation: pulse 1s ease-in-out infinite;
+}
+
 .timer {
-  text-align: center;
-  font-size: var(--text-4xl);
+  font-size: var(--text-3xl);
   font-weight: 800;
   font-family: var(--font-mono);
   color: var(--color-accent);
-  letter-spacing: 0.05em;
-  text-shadow: 0 0 20px var(--color-accent-glow);
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 16px var(--color-accent-glow);
 }
 
 /* Actions */
@@ -133,21 +168,63 @@
   gap: var(--space-3);
 }
 
-.dialBtn, .endBtn {
-  width: 100%;
+.btnIcon {
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .dialBtn {
-  font-size: var(--text-lg) !important;
-  padding: var(--space-5) var(--space-8) !important;
+  width: 100%;
+  height: var(--call-action-height, 56px);
+  font-size: var(--text-base) !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--space-3) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.3) !important;
 }
 
-.endBtn {
-  animation: none;
+.cancelBtn {
+  width: 100%;
+  height: var(--call-action-height, 56px);
+  font-size: var(--text-base) !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--space-2) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+.inCallControls {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: var(--space-3);
 }
 
 .muteBtn {
-  width: 100%;
+  height: var(--call-action-height, 56px);
+  font-size: var(--text-sm) !important;
+  font-weight: 600 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--space-2) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+.endBtn {
+  height: var(--call-action-height, 56px);
+  font-size: var(--text-base) !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--space-2) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3) !important;
 }
 
 .endedMessage {
@@ -157,9 +234,9 @@
   gap: var(--space-3);
   padding: var(--space-4);
   background: var(--color-info-bg);
-  border: 1px solid rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.25);
   border-radius: var(--radius-md);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   color: var(--color-info);
   font-weight: 500;
 }
@@ -167,7 +244,7 @@
 /* Quick Actions */
 .quickActions {
   border-top: 1px solid var(--border-subtle);
-  padding-top: var(--space-4);
+  padding-top: var(--space-3);
 }
 
 .quickLabel {
@@ -176,18 +253,175 @@
   margin-bottom: var(--space-2);
 }
 
-.quickBtns {
-  display: flex;
-  flex-direction: column;
+.quickGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--space-2);
+}
+
+.quickBtn {
+  height: 44px;
+  padding: 0 var(--space-2) !important;
+  font-size: var(--text-xs) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  background: var(--surface-hover) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-md) !important;
+  white-space: nowrap;
+}
+
+.quickBtn:hover {
+  border-color: var(--border-default) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
 }
 
 /* Error */
 .error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-3);
   background: var(--color-danger-bg);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.25);
   border-radius: var(--radius-md);
   font-size: var(--text-xs);
   color: var(--color-danger);
+}
+
+/* ===== FLOATING CALL ACTION BAR (MOBILE) ===== */
+.floatingActionBar {
+  position: fixed;
+  bottom: calc(var(--bottom-bar-height, 64px) + 8px);
+  left: 12px;
+  right: 12px;
+  max-width: 600px;
+  margin: 0 auto;
+  height: 58px;
+  background: rgba(13, 23, 42, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-3) 0 var(--space-4);
+  z-index: 990;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 16px rgba(16, 185, 129, 0.2);
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.floatingInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.floatingPulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
+  animation: pulse 1s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.floatingMeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.floatingName {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floatingTimer {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.floatingBtns {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.floatingMuteBtn {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  border: 1px solid var(--border-subtle);
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.floatingMuteActive {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: var(--color-warning);
+}
+
+.floatingEndBtn {
+  height: 42px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  background: var(--color-danger);
+  border: none;
+  color: white;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(239, 68, 68, 0.4);
+  transition: transform 80ms ease;
+}
+
+.floatingEndBtn:active, .floatingMuteBtn:active {
+  transform: scale(0.92);
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes pulseRing {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.6);
+    opacity: 0;
+  }
 }

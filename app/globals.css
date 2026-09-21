@@ -105,6 +105,10 @@
   /* Layout */
   --sidebar-width: 280px;
   --navbar-height: 64px;
+  --navbar-mobile-height: 48px;
+  --bottom-bar-height: 64px;
+  --call-action-height: 56px;
+  --touch-target-min: 48px;
   --max-content-width: 1400px;
 }
 
@@ -830,4 +834,44 @@ img {
 [data-tooltip]:hover::after {
   opacity: 1;
   transform: translateX(-50%) scale(1);
+}
+
+/* --- Mobile Utility Classes --- */
+.mobile-only {
+  display: none;
+}
+
+.desktop-only {
+  display: contents;
+}
+
+@media (max-width: 768px) {
+  .mobile-only {
+    display: contents;
+  }
+
+  .desktop-only {
+    display: none;
+  }
+
+  .mobile-full-width {
+    width: 100%;
+  }
+}
+
+/* --- Touch Feedback --- */
+@media (pointer: coarse) {
+  .btn:active {
+    transform: scale(0.97);
+    transition: transform 80ms ease;
+  }
+}
+
+/* --- Reduced Motion --- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

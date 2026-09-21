@@ -3,3 +3,5 @@ node_modules/
 .env.local
 tmp-init/
 .vercel
+.DS_Store
+*.log
