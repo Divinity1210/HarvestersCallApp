@@ -8,6 +8,7 @@ import ScriptDisplay from '@/components/ScriptDisplay';
 import CallDialer, { CallActionBar } from '@/components/CallDialer';
 import LeadCard from '@/components/LeadCard';
 import AIResultsPanel from '@/components/AIResultsPanel';
+import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
 import styles from './agent.module.css';
 
 export default function AgentDashboard() {
@@ -19,6 +20,7 @@ export default function AgentDashboard() {
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [agentStats, setAgentStats] = useState({ callsToday: 0, completedToday: 0, avgDuration: 0 });
   const [showResults, setShowResults] = useState(false);
+  const [showMicModal, setShowMicModal] = useState(false);
   
   // Mobile tab state: 'call' | 'script' | 'results'
   const [mobileTab, setMobileTab] = useState('call');
@@ -65,6 +67,17 @@ export default function AgentDashboard() {
     const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
   }, [profile?.id]);
+
+  // Auto-open microphone helper modal whenever a mic permission error occurs
+  useEffect(() => {
+    if (call.callError && (
+      call.callError.toLowerCase().includes('microphone') ||
+      call.callError.toLowerCase().includes('permission') ||
+      call.callError.includes('31401')
+    )) {
+      setShowMicModal(true);
+    }
+  }, [call.callError]);
 
   /** Handle "Fetch Next Attendee" */
   const handleFetchLead = async () => {
@@ -311,7 +324,7 @@ export default function AgentDashboard() {
             isMuted={call.isMuted}
             callError={call.callError}
             onInitDevice={call.initDevice}
-            onRequestMicPermission={call.requestMicrophonePermission}
+            onRequestMicPermission={() => setShowMicModal(true)}
             onStartCall={() => {
               if (lead.currentLead && lead.currentCall) {
                 call.startCall(lead.currentLead.id, lead.currentCall.id);
@@ -342,12 +355,30 @@ export default function AgentDashboard() {
       {/* Error Toast */}
       {(lead.error || call.callError) && (
         <div className="toast-container">
-          <div className="toast toast-error">
+          <div
+            className="toast toast-error"
+            onClick={() => {
+              if (call.callError && (
+                call.callError.toLowerCase().includes('microphone') ||
+                call.callError.toLowerCase().includes('permission') ||
+                call.callError.includes('31401')
+              )) {
+                setShowMicModal(true);
+              }
+            }}
+            style={{ cursor: call.callError ? 'pointer' : 'default' }}
+          >
             <span>⚠️</span>
-            <span>{lead.error || call.callError}</span>
+            <span>
+              {lead.error || call.callError}
+              {call.callError && (call.callError.toLowerCase().includes('microphone') || call.callError.toLowerCase().includes('permission')) && (
+                <strong style={{ marginLeft: 6, textDecoration: 'underline' }}>Tap for help</strong>
+              )}
+            </span>
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 lead.setError(null);
                 call.setCallError(null);
               }}
@@ -359,6 +390,15 @@ export default function AgentDashboard() {
           </div>
         </div>
       )}
+
+      {/* Microphone Permission Modal */}
+      <MicrophonePermissionModal
+        isOpen={showMicModal}
+        onClose={() => setShowMicModal(false)}
+        onGranted={() => {
+          call.setCallError(null);
+        }}
+      />
     </div>
   );
 }
