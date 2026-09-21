@@ -482,18 +482,18 @@ export default function CampaignsPage() {
                       <li>Paste the full URL below</li>
                     </ol>
                     <div style={{ marginTop: 'var(--space-3)', fontSize: 'var(--text-xs)' }}>
-                      Sheet must have columns: <code>full_name</code> (or <code>name</code>) and <code>phone_number</code> (or <code>phone</code>).
-                      Additional columns become metadata.
+                      Sheet must have name and phone columns: e.g. <code>Name</code> / <code>full_name</code> and <code>Phone no</code> / <code>phone_number</code>.
+                      Additional columns (e.g. Agent, Attendance, Feedback) become attendee metadata.
                     </div>
                   </div>
 
                   <div className="form-group">
-                    <label className="form-label">Google Sheet URL *</label>
+                    <label className="form-label">Google Sheet URL or ID *</label>
                     <input
                       className="form-input"
                       value={sheetsUrl}
                       onChange={e => setSheetsUrl(e.target.value)}
-                      placeholder="https://docs.google.com/spreadsheets/d/1abc.../edit"
+                      placeholder="https://docs.google.com/spreadsheets/d/1C9oou... or Spreadsheet ID"
                     />
                   </div>
 
@@ -503,10 +503,10 @@ export default function CampaignsPage() {
                       className="form-input"
                       value={sheetsName}
                       onChange={e => setSheetsName(e.target.value)}
-                      placeholder="Sheet1"
+                      placeholder="Sheet1 (or Sheet3)"
                     />
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      The tab name at the bottom of your spreadsheet. Default: Sheet1
+                      The tab name at the bottom of your spreadsheet (e.g. Sheet1, Sheet3).
                     </span>
                   </div>
 
@@ -514,10 +514,13 @@ export default function CampaignsPage() {
                     className="btn btn-primary"
                     disabled={!sheetsUrl || isImporting}
                     onClick={async () => {
-                      // Extract spreadsheet ID from URL
-                      const match = sheetsUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
-                      if (!match) {
-                        setImportStatus('Error: Invalid Google Sheets URL. It should look like https://docs.google.com/spreadsheets/d/...');
+                      // Extract spreadsheet ID from URL or raw ID
+                      let spreadsheetId = sheetsUrl.trim();
+                      const match = spreadsheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
+                      if (match) {
+                        spreadsheetId = match[1];
+                      } else if (!/^[a-zA-Z0-9-_]{20,}$/.test(spreadsheetId)) {
+                        setImportStatus('Error: Invalid Google Sheets URL or ID. Please paste a valid Google Sheets URL or Spreadsheet ID.');
                         return;
                       }
                       setIsImporting(true);
@@ -528,8 +531,8 @@ export default function CampaignsPage() {
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
                             campaignId: showImport,
-                            spreadsheetId: match[1],
-                            sheetName: sheetsName || 'Sheet1',
+                            spreadsheetId,
+                            sheetName: (sheetsName || 'Sheet1').trim(),
                           }),
                         });
                         const data = await res.json();
