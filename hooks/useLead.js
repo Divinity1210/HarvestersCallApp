@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { LEAD_STATUS } from '@/lib/constants';
 
 /**
@@ -14,6 +14,7 @@ export function useLead() {
   const [error, setError] = useState(null);
   const [qaResults, setQaResults] = useState(null);
   const [processingAI, setProcessingAI] = useState(false);
+  const pollTimeoutRef = useRef(null);
 
   /**
    * Fetch and lock the next available lead for the current agent.
@@ -73,10 +74,23 @@ export function useLead() {
     }
   }, [currentLead]);
 
+  /** Cancel AI results polling */
+  const cancelPolling = useCallback(() => {
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
+    setProcessingAI(false);
+  }, []);
+
   /**
    * Poll for AI processing results after a call ends.
    */
   const pollForResults = useCallback(async (callId) => {
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
     setProcessingAI(true);
 
     const maxAttempts = 30; // 30 × 2s = 60 seconds max wait
@@ -109,7 +123,7 @@ export function useLead() {
         }
 
         // Wait 2 seconds and try again
-        setTimeout(poll, 2000);
+        pollTimeoutRef.current = setTimeout(poll, 2000);
       } catch (err) {
         console.error('Poll error:', err);
         setError(err.message);
@@ -199,6 +213,7 @@ export function useLead() {
     fetchNextLead,
     releaseLead,
     pollForResults,
+    cancelPolling,
     submitResults,
     submitNoAnswer,
     setError,

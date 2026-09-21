@@ -19,6 +19,24 @@ export function useCall() {
   const connectionRef = useRef(null);
   const timerRef = useRef(null);
   const startTimeRef = useRef(null);
+  const wasConnectedRef = useRef(false);
+
+  const formatErrorMessage = (msg) => {
+    if (!msg) return null;
+    const str = String(msg);
+    if (
+      str.includes('31401') ||
+      str.toLowerCase().includes('permissiondenied') ||
+      str.toLowerCase().includes('permission denied') ||
+      str.toLowerCase().includes('user media')
+    ) {
+      return 'Microphone permission was denied. Please allow microphone access in your browser or phone settings to make calls.';
+    }
+    if (str.includes('31400') || str.toLowerCase().includes('device not found')) {
+      return 'No microphone was detected on this device.';
+    }
+    return str;
+  };
 
   /** Initialize the Twilio Device with a fresh token */
   const initDevice = useCallback(async () => {
@@ -54,7 +72,7 @@ export function useCall() {
 
       device.on('error', (err) => {
         console.error('Twilio Device error:', err);
-        setCallError(err.message || 'Device error');
+        setCallError(formatErrorMessage(err.message || 'Device error'));
         setCallState('idle');
       });
 
@@ -76,7 +94,25 @@ export function useCall() {
       deviceRef.current = device;
     } catch (err) {
       console.error('Device init error:', err);
-      setCallError(err.message);
+      setCallError(formatErrorMessage(err.message));
+    }
+  }, []);
+
+  /** Request microphone access explicitly */
+  const requestMicrophonePermission = useCallback(async () => {
+    try {
+      setCallError(null);
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop());
+        setCallError(null);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Mic permission request error:', err);
+      setCallError(formatErrorMessage(err.message || 'Microphone permission denied'));
+      return false;
     }
   }, []);
 
@@ -87,6 +123,7 @@ export function useCall() {
       return;
     }
 
+    wasConnectedRef.current = false;
     setCallState('connecting');
     setCallError(null);
     setCallDuration(0);
@@ -108,6 +145,7 @@ export function useCall() {
       });
 
       call.on('accept', () => {
+        wasConnectedRef.current = true;
         setCallState('active');
         startTimeRef.current = Date.now();
         // Start the call timer
@@ -121,14 +159,28 @@ export function useCall() {
       });
 
       call.on('cancel', () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
         setCallState('idle');
-        endCallCleanup();
+        connectionRef.current = null;
       });
 
       call.on('error', (err) => {
         console.error('Call error:', err);
-        setCallError(err.message);
-        endCallCleanup();
+        setCallError(formatErrorMessage(err.message));
+        if (wasConnectedRef.current) {
+          endCallCleanup();
+        } else {
+          // If never connected, do NOT transition to 'ended'
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          setCallState('idle');
+          connectionRef.current = null;
+        }
       });
 
       // Store the Twilio Call SID
@@ -137,8 +189,9 @@ export function useCall() {
       }
     } catch (err) {
       console.error('Start call error:', err);
-      setCallError(err.message);
+      setCallError(formatErrorMessage(err.message));
       setCallState('idle');
+      connectionRef.current = null;
     }
   }, []);
 
@@ -165,7 +218,12 @@ export function useCall() {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    setCallState('ended');
+    // Only transition to 'ended' if the call actually connected/was active
+    if (wasConnectedRef.current) {
+      setCallState('ended');
+    } else {
+      setCallState('idle');
+    }
     connectionRef.current = null;
   };
 
@@ -177,6 +235,7 @@ export function useCall() {
     setCurrentCallSid(null);
     setIsMuted(false);
     startTimeRef.current = null;
+    wasConnectedRef.current = false;
   }, []);
 
   /** Format seconds as mm:ss */
@@ -201,10 +260,13 @@ export function useCall() {
     callDuration,
     formattedDuration,
     callError,
+    setCallError,
     currentCallSid,
     deviceReady,
     isMuted,
+    wasConnected: wasConnectedRef.current,
     initDevice,
+    requestMicrophonePermission,
     startCall,
     endCall,
     toggleMute,

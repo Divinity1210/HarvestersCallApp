@@ -5,13 +5,16 @@ import styles from './AIResultsPanel.module.css';
 
 /**
  * AIResultsPanel — displays AI-extracted data for agent review and confirmation.
- * Shows: Next Steps checkboxes, testimony summary, transcript preview.
+ * Shows: Next Steps checkboxes, testimony summary, transcript preview,
+ * with graceful fallback to manual entry if AI processing is skipped or fails.
  */
 export default function AIResultsPanel({
   qaResults,
   processing,
   nextStepsOptions,
   onConfirm,
+  onCancel,
+  onSkipAI,
   error,
 }) {
   const [selectedNextSteps, setSelectedNextSteps] = useState([]);
@@ -78,40 +81,70 @@ export default function AIResultsPanel({
               <span>Scoring script adherence</span>
             </div>
           </div>
+
+          <div style={{ marginTop: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', width: '100%', maxWidth: 360 }}>
+            {onSkipAI && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={onSkipAI}
+                style={{ width: '100%' }}
+              >
+                ✍️ Skip AI & Enter Notes Manually
+              </button>
+            )}
+            {onCancel && (
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={onCancel}
+                style={{ width: '100%', color: 'var(--text-secondary)' }}
+              >
+                ← Cancel & Return to Call
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
-  // Error state
-  if (error && !qaResults) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.errorState}>
-          <div className="empty-state-icon">⚠️</div>
-          <h3>AI Processing Error</h3>
-          <p className="text-secondary">{error}</p>
-          <p className="text-secondary" style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--space-2)' }}>
-            You can still submit the call manually below.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // Results ready — show for agent review
+  // Results ready OR manual review fallback
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <h2 className={styles.title}>🤖 AI Analysis Complete</h2>
-        <span className={`badge ${qaResults?.script_adherence_score >= 80 ? 'badge-success' : 
-          qaResults?.script_adherence_score >= 50 ? 'badge-warning' : 'badge-danger'}`}>
-          Script: {qaResults?.script_adherence_score?.toFixed(0) || '—'}%
-        </span>
-      </div>
+      {error && !qaResults ? (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.12)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: 'var(--radius-md)',
+          padding: 'var(--space-4)',
+          marginBottom: 'var(--space-4)',
+          color: '#f87171',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600 }}>
+            <span>⚠️</span>
+            <span>Manual Entry Mode</span>
+          </div>
+          <p style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)', color: 'var(--text-secondary)' }}>
+            {error} — You can log attendee next steps and notes manually below.
+          </p>
+        </div>
+      ) : (
+        <div className={styles.header}>
+          <h2 className={styles.title}>🤖 {qaResults ? 'AI Analysis Complete' : 'Call Follow-up'}</h2>
+          {qaResults?.script_adherence_score != null && (
+            <span className={`badge ${qaResults.script_adherence_score >= 80 ? 'badge-success' : 
+              qaResults.script_adherence_score >= 50 ? 'badge-warning' : 'badge-danger'}`}>
+              Script: {qaResults.script_adherence_score.toFixed(0)}%
+            </span>
+          )}
+        </div>
+      )}
 
       <p className={styles.subtitle}>
-        Review the AI's findings below. Adjust anything that looks incorrect, then confirm.
+        {qaResults
+          ? "Review the AI's findings below. Adjust anything that looks incorrect, then confirm."
+          : "Select agreed next steps and enter any testimony or notes from the conversation."}
       </p>
 
       {/* Transcript Summary */}
@@ -126,7 +159,7 @@ export default function AIResultsPanel({
       <div className={`${styles.section} animate-fade-in-up`} style={{ animationDelay: '0.1s' }}>
         <h3 className={styles.sectionTitle}>
           ✅ Next Steps
-          <span className={styles.aiLabel}>AI-detected</span>
+          {qaResults && <span className={styles.aiLabel}>AI-detected</span>}
         </h3>
         <div className={styles.checkboxList}>
           {(nextStepsOptions || []).map((step) => (
@@ -145,23 +178,23 @@ export default function AIResultsPanel({
         </div>
       </div>
 
-      {/* Testimony */}
+      {/* Testimony / Call Notes */}
       <div className={`${styles.section} animate-fade-in-up`} style={{ animationDelay: '0.2s' }}>
         <h3 className={styles.sectionTitle}>
-          🙏 Testimony
-          <span className={styles.aiLabel}>AI-extracted</span>
+          🙏 Testimony & Notes
+          {qaResults && <span className={styles.aiLabel}>AI-extracted</span>}
         </h3>
         <textarea
           className="form-textarea"
           value={testimony}
           onChange={(e) => setTestimony(e.target.value)}
-          placeholder="No testimony detected. You can add one manually if shared."
+          placeholder="Enter any testimony, feedback, or follow-up notes from the call..."
           rows={4}
         />
       </div>
 
-      {/* Confirm Button */}
-      <div className={styles.confirmSection}>
+      {/* Confirm & Cancel Buttons */}
+      <div className={styles.confirmSection} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         <button
           className="btn btn-primary btn-lg"
           onClick={handleConfirm}
@@ -169,6 +202,16 @@ export default function AIResultsPanel({
         >
           ✅ Confirm & Get Next Attendee
         </button>
+        {onCancel && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={onCancel}
+            style={{ width: '100%', color: 'var(--text-secondary)' }}
+          >
+            ← Return to Dialer
+          </button>
+        )}
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ export default function CallDialer({
   isMuted,
   callError,
   onInitDevice,
+  onRequestMicPermission,
   onStartCall,
   onEndCall,
   onToggleMute,
@@ -169,9 +170,30 @@ export default function CallDialer({
 
       {/* Error display */}
       {callError && (
-        <div className={styles.error} role="alert">
-          <span>⚠️</span>
-          <span>{callError}</span>
+        <div className={styles.error} role="alert" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)' }}>
+            <span>⚠️</span>
+            <span style={{ flex: 1 }}>{callError}</span>
+          </div>
+
+          {onRequestMicPermission && (callError.toLowerCase().includes('microphone') || callError.toLowerCase().includes('permission')) && (
+            <div style={{ marginTop: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '1px solid rgba(239, 68, 68, 0.2)' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onRequestMicPermission}
+                style={{ width: '100%', marginBottom: 'var(--space-2)', background: 'rgba(255,255,255,0.1)' }}
+              >
+                🎙️ Test / Enable Microphone Access
+              </button>
+              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.85)', lineHeight: 1.4 }}>
+                <strong>📱 iPhone Instructions:</strong><br />
+                • In Safari: Tap <strong>"aA"</strong> in address bar → <strong>Website Settings</strong> → <strong>Microphone: Allow</strong><br />
+                • In Chrome: Tap <strong>⋯</strong> → <strong>Settings</strong> → <strong>Content Settings</strong> → <strong>Microphone: Allow</strong><br />
+                • Or check <strong>iPhone Settings → Safari/Chrome → Microphone (ON)</strong>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

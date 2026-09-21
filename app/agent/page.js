@@ -75,14 +75,20 @@ export default function AgentDashboard() {
     setMobileTab('call');
   };
 
-  /** Handle call end — start AI processing */
+  /** Handle call end — start AI processing only if call actually connected */
   const handleCallEnded = useCallback(() => {
-    if (lead.currentCall?.id) {
-      lead.pollForResults(lead.currentCall.id);
-      setShowResults(true);
-      setMobileTab('results');
+    if (call.wasConnected || call.callDuration > 0) {
+      if (lead.currentCall?.id) {
+        lead.pollForResults(lead.currentCall.id);
+        setShowResults(true);
+        setMobileTab('results');
+      }
+    } else {
+      // Call did not connect (0s duration, error, or cancelled before pickup)
+      setShowResults(false);
+      setMobileTab('call');
     }
-  }, [lead]);
+  }, [call.wasConnected, call.callDuration, lead]);
 
   /** Watch call state for 'ended' transition */
   useEffect(() => {
@@ -90,6 +96,20 @@ export default function AgentDashboard() {
       handleCallEnded();
     }
   }, [call.callState, handleCallEnded]);
+
+  /** Cancel AI review and return to dialer */
+  const handleCancelAIReview = () => {
+    lead.cancelPolling();
+    setShowResults(false);
+    call.resetCall();
+    setMobileTab('call');
+  };
+
+  /** Skip waiting for AI and fill in manual notes */
+  const handleSkipAI = () => {
+    lead.cancelPolling();
+    setShowResults(true);
+  };
 
   /** Handle results confirmation */
   const handleConfirmResults = async (confirmedData) => {
@@ -179,7 +199,12 @@ export default function AgentDashboard() {
       <div className={styles.mobileTabNav} role="tablist" aria-label="Workspace views">
         <button
           className={`${styles.mobileTabBtn} ${mobileTab === 'call' ? styles.mobileTabBtnActive : ''}`}
-          onClick={() => setMobileTab('call')}
+          onClick={() => {
+            setMobileTab('call');
+            if (!lead.processingAI && !lead.qaResults) {
+              setShowResults(false);
+            }
+          }}
           role="tab"
           aria-selected={mobileTab === 'call'}
         >
@@ -189,7 +214,12 @@ export default function AgentDashboard() {
         </button>
         <button
           className={`${styles.mobileTabBtn} ${mobileTab === 'script' ? styles.mobileTabBtnActive : ''}`}
-          onClick={() => setMobileTab('script')}
+          onClick={() => {
+            setMobileTab('script');
+            if (!lead.processingAI && !lead.qaResults) {
+              setShowResults(false);
+            }
+          }}
           role="tab"
           aria-selected={mobileTab === 'script'}
         >
@@ -258,6 +288,8 @@ export default function AgentDashboard() {
               processing={lead.processingAI}
               nextStepsOptions={selectedCampaign?.next_steps_options || []}
               onConfirm={handleConfirmResults}
+              onCancel={handleCancelAIReview}
+              onSkipAI={handleSkipAI}
               error={lead.error}
             />
           ) : (
@@ -279,6 +311,7 @@ export default function AgentDashboard() {
             isMuted={call.isMuted}
             callError={call.callError}
             onInitDevice={call.initDevice}
+            onRequestMicPermission={call.requestMicrophonePermission}
             onStartCall={() => {
               if (lead.currentLead && lead.currentCall) {
                 call.startCall(lead.currentLead.id, lead.currentCall.id);
@@ -314,7 +347,10 @@ export default function AgentDashboard() {
             <span>{lead.error || call.callError}</span>
             <button
               className="btn btn-ghost btn-sm"
-              onClick={() => { lead.setError(null); }}
+              onClick={() => {
+                lead.setError(null);
+                call.setCallError(null);
+              }}
               style={{ marginLeft: 'auto', color: 'white' }}
               aria-label="Dismiss error"
             >
