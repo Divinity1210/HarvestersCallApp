@@ -188,6 +188,7 @@ export async function POST(request) {
         phone_number: phone,
         phone_hash: Buffer.from(phone).toString('base64'),
         metadata: metadata,
+        row_index: i + 1,
       });
     }
 
@@ -208,18 +209,19 @@ export async function POST(request) {
       let paramIdx = 1;
 
       for (const l of chunk) {
-        valueRows.push(`($${paramIdx++}, $${paramIdx++}, $${paramIdx++}, $${paramIdx++}, $${paramIdx++}, 'pending')`);
+        valueRows.push(`($${paramIdx++}, $${paramIdx++}, $${paramIdx++}, $${paramIdx++}, $${paramIdx++}, $${paramIdx++}, 'pending')`);
         params.push(
           l.campaign_id,
           l.full_name,
           l.phone_number,
           l.phone_hash,
-          JSON.stringify(l.metadata)
+          JSON.stringify(l.metadata),
+          l.row_index
         );
       }
 
       const batchSql = `
-        INSERT INTO leads (campaign_id, full_name, phone_number, phone_hash, metadata, status)
+        INSERT INTO leads (campaign_id, full_name, phone_number, phone_hash, metadata, row_index, status)
         VALUES ${valueRows.join(', ')}
         ON CONFLICT (campaign_id, phone_hash) DO NOTHING
       `;

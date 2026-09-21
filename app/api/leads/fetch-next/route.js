@@ -42,7 +42,9 @@ export async function POST(request) {
           )
         ORDER BY 
           CASE WHEN status = 'no_answer' THEN 0 ELSE 1 END,
-          created_at ASC
+          row_index DESC NULLS LAST,
+          created_at DESC,
+          id DESC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
@@ -55,7 +57,7 @@ export async function POST(request) {
         updated_at = now()
       FROM candidate
       WHERE l.id = candidate.id
-      RETURNING l.id, l.full_name, l.metadata, l.call_attempts, l.max_attempts, l.campaign_id;
+      RETURNING l.id, l.full_name, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id;
     `;
 
     const lockedRows = await query(lockQuery, [campaignId, userId]);
