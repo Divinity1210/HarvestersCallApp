@@ -29,7 +29,10 @@ export function useLead() {
       const res = await fetch('/api/leads/fetch-next', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ campaignId }),
+        body: JSON.stringify({
+          campaignId,
+          previousLeadId: currentLead?.id || null,
+        }),
       });
 
       const data = await res.json();

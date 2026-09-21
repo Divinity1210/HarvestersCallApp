@@ -8,7 +8,7 @@ import { getSessionUser } from '@/lib/auth';
  */
 export async function POST(request) {
   try {
-    const { campaignId } = await request.json();
+    const { campaignId, previousLeadId } = await request.json();
 
     if (!campaignId) {
       return NextResponse.json({ error: 'Campaign ID required' }, { status: 400 });
@@ -17,15 +17,22 @@ export async function POST(request) {
     const session = await getSessionUser();
     const userId = session?.id || null;
 
-    // Release any stale locks from this agent
-    if (userId) {
+    // 1. If this specific agent device is moving away from an uncompleted lead, release only that lead
+    if (previousLeadId) {
       await query(
         `UPDATE leads 
-         SET status = 'pending', locked_by = NULL, locked_at = NULL 
-         WHERE locked_by = $1 AND status = 'locked'`,
-        [userId]
+         SET status = 'pending', locked_by = NULL, locked_at = NULL, updated_at = now() 
+         WHERE id = $1 AND status = 'locked'`,
+        [previousLeadId]
       );
     }
+
+    // 2. Auto-release abandoned locks (older than 15 minutes) so leads are never stranded
+    await query(
+      `UPDATE leads 
+       SET status = 'pending', locked_by = NULL, locked_at = NULL, updated_at = now() 
+       WHERE status = 'locked' AND locked_at < now() - interval '15 minutes'`
+    );
 
     // Atomic fetch-and-lock using SKIP LOCKED
     // Priority:
