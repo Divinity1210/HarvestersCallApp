@@ -11,6 +11,8 @@ import AIResultsPanel from '@/components/AIResultsPanel';
 import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
 import styles from './agent.module.css';
 
+const CURRENT_APP_VERSION = '2026-09-24-v2';
+
 export default function AgentDashboard() {
   const { profile } = useAuth();
   const call = useCall();
@@ -32,6 +34,28 @@ export default function AgentDashboard() {
   const deviceStartTimeRef = useRef(null);
 
   const callMode = selectedCampaign?.call_mode || 'device';
+
+  // Auto-refresh mechanism: polls /api/app-version every 15s.
+  // If a new deployment occurs, automatically reloads the page!
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const res = await fetch('/api/app-version?t=' + Date.now(), { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.version && data.version !== CURRENT_APP_VERSION) {
+            console.log(`[AutoUpdater] New deployment detected (${data.version} vs ${CURRENT_APP_VERSION}). Refreshing...`);
+            window.location.reload(true);
+          }
+        }
+      } catch (e) {
+        // silent
+      }
+    };
+
+    const interval = setInterval(checkVersion, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch active campaigns
   useEffect(() => {
@@ -61,6 +85,11 @@ export default function AgentDashboard() {
       try {
         const res = await fetch('/api/agent/stats?period=today');
         const data = await res.json();
+        if (data?.version && data.version !== CURRENT_APP_VERSION) {
+          console.log(`[AutoUpdater] New deployment detected via stats (${data.version}). Refreshing...`);
+          window.location.reload(true);
+          return;
+        }
         if (data?.stats) {
           setAgentStats({
             callsToday: data.stats.totalCalls || 0,
@@ -274,6 +303,27 @@ export default function AgentDashboard() {
               {Math.floor(agentStats.avgDuration / 60)}:{(agentStats.avgDuration % 60).toString().padStart(2, '0')}
             </span>
           </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => window.location.reload(true)}
+            title="Reload App"
+            style={{
+              fontSize: '12px',
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)',
+              background: 'rgba(255, 255, 255, 0.05)',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            <span>🔄</span>
+            <span>Reload</span>
+          </button>
         </div>
       </div>
 

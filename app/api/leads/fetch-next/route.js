@@ -24,9 +24,18 @@ export async function POST(request) {
 
     const session = await getSessionUser();
     const userId = session?.id || null;
-    const cleanDeviceId = (deviceId && typeof deviceId === 'string' && deviceId.trim()) 
-      ? deviceId.trim() 
-      : ('srv_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36));
+
+    if (!deviceId || typeof deviceId !== 'string' || !deviceId.trim()) {
+      return NextResponse.json(
+        { 
+          error: '🔄 App updated with anti-duplicate calling! Please REFRESH this page in your browser to continue.',
+          needsRefresh: true 
+        }, 
+        { status: 426 }
+      );
+    }
+
+    const cleanDeviceId = deviceId.trim();
 
     // ── Step 1: Release previous lead (mark unreached, never re-queued) ──
     if (previousLeadId) {
