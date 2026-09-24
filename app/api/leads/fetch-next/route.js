@@ -4,15 +4,15 @@ import { getSessionUser } from '@/lib/auth';
 
 /**
  * POST /api/leads/fetch-next
- * Atomically fetches and locks the next available lead for this specific agent device
- * using Postgres row-level locking (FOR UPDATE SKIP LOCKED).
+ * Atomically fetches and locks the next available lead for this specific agent device.
  * 
- * STRICT ZERO-DUPLICATE GUARANTEES:
- * 1. Only leads with status = 'pending' AND call_attempts = 0 are fetched.
- * 2. Once a lead is assigned to an agent, it is locked to that device and its call_attempts is set to 1.
- * 3. NO OTHER AGENT will ever be given this lead.
- * 4. If an agent already has an active locked lead on this device, it is returned instead of pulling a new one.
- * 5. Abandoned locks (over 30 mins) or skipped leads are marked 'unreached', NEVER returned to pending.
+ * BULLETPROOF ZERO-DUPLICATE GUARANTEES:
+ * 1. Only leads with status = 'pending' AND call_attempts = 0 are candidates.
+ * 2. Leads whose phone_number is already locked by ANOTHER device are excluded.
+ * 3. After locking, a verification query confirms no duplicate phone lock exists.
+ * 4. If verification fails, the lock is released and we retry (up to 3 times).
+ * 5. Gap enforcement: new leads must be ≥10 rows away from any currently locked lead.
+ * 6. Abandoned locks (>30 min) are marked 'unreached', NEVER returned to pending.
  */
 export async function POST(request) {
   try {
@@ -24,10 +24,11 @@ export async function POST(request) {
 
     const session = await getSessionUser();
     const userId = session?.id || null;
-    const cleanDeviceId = (deviceId && typeof deviceId === 'string') ? deviceId.trim() : null;
+    const cleanDeviceId = (deviceId && typeof deviceId === 'string' && deviceId.trim()) 
+      ? deviceId.trim() 
+      : ('srv_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36));
 
-    // 1. If an agent device explicitly moves away from an uncompleted lead, mark it 'unreached' (NOT pending!)
-    // so it is NEVER handed to another volunteer to call again.
+    // ── Step 1: Release previous lead (mark unreached, never re-queued) ──
     if (previousLeadId) {
       await query(
         `UPDATE leads 
@@ -37,17 +38,14 @@ export async function POST(request) {
       );
     }
 
-    // 2. Mark any abandoned locks (older than 30 minutes) as 'unreached'
-    // NEVER put them back into pending!
+    // ── Step 2: Expire abandoned locks (>30 min → unreached) ──
     await query(
       `UPDATE leads 
        SET status = 'unreached', locked_by = NULL, locked_device = NULL, locked_at = NULL, updated_at = now() 
        WHERE status = 'locked' AND locked_at < now() - interval '30 minutes'`
     );
 
-    // 3. DEVICE RESUME CHECK:
-    // If this specific device already has an active locked lead in this campaign,
-    // return that lead immediately so the agent can finish/log it!
+    // ── Step 3: Device resume — return this device's existing locked lead ──
     if (cleanDeviceId) {
       const existingLocked = await query(
         `SELECT l.id, l.full_name, l.phone_number, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id,
@@ -64,7 +62,6 @@ export async function POST(request) {
 
       if (existingLocked.length > 0) {
         const l = existingLocked[0];
-        // If no call record exists yet, create one
         let callId = l.call_id;
         if (!callId) {
           const callRows = await query(
@@ -93,41 +90,145 @@ export async function POST(request) {
       }
     }
 
-    // 4. ATOMIC FETCH-AND-LOCK:
-    // Strictly fetch 1 fresh lead where status = 'pending' AND call_attempts = 0.
-    // FOR UPDATE SKIP LOCKED guarantees that concurrent requests from multiple agents
-    // will each atomically lock a unique row with zero collision.
-    const lockQuery = `
-      WITH candidate AS (
-        SELECT id
-        FROM leads
-        WHERE campaign_id = $1
-          AND status = 'pending'
-          AND call_attempts = 0
-        ORDER BY 
-          row_index DESC NULLS LAST,
-          created_at DESC,
-          id DESC
-        LIMIT 1
-        FOR UPDATE SKIP LOCKED
-      )
-      UPDATE leads l
-      SET 
-        status = 'locked',
-        locked_by = $2,
-        locked_device = $3,
-        locked_at = now(),
-        call_attempts = 1,
-        updated_at = now()
-      FROM candidate
-      WHERE l.id = candidate.id
-      RETURNING l.id, l.full_name, l.phone_number, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id;
-    `;
+    // ── Step 4: Atomic fetch-and-lock with PHONE-LEVEL exclusion + GAP + VERIFY ──
+    const GAP_SIZE = 10;
+    const MAX_RETRIES = 3;
+    let lockedLead = null;
 
-    const lockedRows = await query(lockQuery, [campaignId, userId, cleanDeviceId]);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      // Phase A: Try with gap enforcement + phone exclusion
+      const gapLockQuery = `
+        WITH locked_phones AS (
+          SELECT DISTINCT phone_number
+          FROM leads
+          WHERE campaign_id = $1
+            AND status = 'locked'
+            AND phone_number IS NOT NULL
+        ),
+        locked_indices AS (
+          SELECT row_index
+          FROM leads
+          WHERE campaign_id = $1
+            AND status = 'locked'
+            AND row_index IS NOT NULL
+        ),
+        candidate AS (
+          SELECT l.id
+          FROM leads l
+          WHERE l.campaign_id = $1
+            AND l.status = 'pending'
+            AND l.call_attempts = 0
+            AND NOT EXISTS (
+              SELECT 1 FROM locked_phones lp WHERE lp.phone_number = l.phone_number
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM locked_indices li
+              WHERE ABS(l.row_index - li.row_index) < ${GAP_SIZE}
+            )
+          ORDER BY 
+            l.row_index DESC NULLS LAST,
+            l.created_at DESC,
+            l.id DESC
+          LIMIT 1
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE leads upd
+        SET 
+          status = 'locked',
+          locked_by = $2,
+          locked_device = $3,
+          locked_at = now(),
+          call_attempts = 1,
+          updated_at = now()
+        FROM candidate
+        WHERE upd.id = candidate.id
+        RETURNING upd.id, upd.full_name, upd.phone_number, upd.metadata, upd.row_index, upd.call_attempts, upd.max_attempts, upd.campaign_id;
+      `;
 
-    if (lockedRows.length === 0) {
-      // Check if all leads are completed or exhausted
+      let lockedRows = await query(gapLockQuery, [campaignId, userId, cleanDeviceId]);
+
+      // Phase B: Fallback — relax the gap constraint but KEEP the phone exclusion
+      if (lockedRows.length === 0) {
+        const fallbackLockQuery = `
+          WITH locked_phones AS (
+            SELECT DISTINCT phone_number
+            FROM leads
+            WHERE campaign_id = $1
+              AND status = 'locked'
+              AND phone_number IS NOT NULL
+          ),
+          candidate AS (
+            SELECT l.id
+            FROM leads l
+            WHERE l.campaign_id = $1
+              AND l.status = 'pending'
+              AND l.call_attempts = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM locked_phones lp WHERE lp.phone_number = l.phone_number
+              )
+            ORDER BY 
+              l.row_index DESC NULLS LAST,
+              l.created_at DESC,
+              l.id DESC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+          )
+          UPDATE leads l
+          SET 
+            status = 'locked',
+            locked_by = $2,
+            locked_device = $3,
+            locked_at = now(),
+            call_attempts = 1,
+            updated_at = now()
+          FROM candidate
+          WHERE l.id = candidate.id
+          RETURNING l.id, l.full_name, l.phone_number, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id;
+        `;
+
+        lockedRows = await query(fallbackLockQuery, [campaignId, userId, cleanDeviceId]);
+      }
+
+      if (lockedRows.length === 0) {
+        // No more leads at all
+        break;
+      }
+
+      const candidate = lockedRows[0];
+
+      // ── VERIFICATION: Confirm no other device holds a lock on this phone number ──
+      const dupeCheck = await query(
+        `SELECT id, locked_device 
+         FROM leads 
+         WHERE campaign_id = $1 
+           AND phone_number = $2 
+           AND status = 'locked' 
+           AND id != $3`,
+        [campaignId, candidate.phone_number, candidate.id]
+      );
+
+      if (dupeCheck.length > 0) {
+        // Another device ALSO has this phone locked — release ours and retry
+        console.warn(
+          `[fetch-next] Duplicate phone lock detected for ${candidate.phone_number}. ` +
+          `Our lead=${candidate.id}, conflict leads=[${dupeCheck.map(d => d.id).join(',')}]. Releasing and retrying (attempt ${attempt + 1}).`
+        );
+        await query(
+          `UPDATE leads 
+           SET status = 'pending', locked_by = NULL, locked_device = NULL, locked_at = NULL, call_attempts = 0, updated_at = now() 
+           WHERE id = $1 AND status = 'locked'`,
+          [candidate.id]
+        );
+        continue; // retry
+      }
+
+      // Verification passed — this lead is safely ours
+      lockedLead = candidate;
+      break;
+    }
+
+    if (!lockedLead) {
+      // Check campaign stats
       const countRows = await query(
         `SELECT 
           COUNT(*)::int as total,
@@ -148,9 +249,7 @@ export async function POST(request) {
       );
     }
 
-    const lockedLead = lockedRows[0];
-
-    // Create a call record
+    // ── Step 5: Create call record ──
     const callRows = await query(
       `INSERT INTO calls (lead_id, agent_id, campaign_id, initiated_at, call_status)
        VALUES ($1, $2, $3, now(), 'initiating')

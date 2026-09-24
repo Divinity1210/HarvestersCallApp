@@ -8,14 +8,23 @@ import { LEAD_STATUS } from '@/lib/constants';
  * Ensures that multiple volunteer phones/devices using the same account
  * are completely isolated and never conflict or receive duplicate contacts.
  */
+let memDeviceId = null;
+
 export function getDeviceId() {
   if (typeof window === 'undefined') return 'server';
-  let id = localStorage.getItem('harvesters_device_id');
-  if (!id) {
-    id = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
-    localStorage.setItem('harvesters_device_id', id);
+  try {
+    let id = localStorage.getItem('harvesters_device_id');
+    if (!id) {
+      id = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+      localStorage.setItem('harvesters_device_id', id);
+    }
+    return id;
+  } catch (e) {
+    if (!memDeviceId) {
+      memDeviceId = 'dev_mem_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+    }
+    return memDeviceId;
   }
-  return id;
 }
 
 /**
@@ -30,6 +39,7 @@ export function useLead() {
   const [qaResults, setQaResults] = useState(null);
   const [processingAI, setProcessingAI] = useState(false);
   const pollTimeoutRef = useRef(null);
+  const fetchInFlightRef = useRef(false);
 
   /**
    * Restore any active in-progress lead for this device (e.g., after browser refresh or SIM phone call).
@@ -59,6 +69,13 @@ export function useLead() {
    * Strictly enforces: status = 'pending' AND call_attempts = 0.
    */
   const fetchNextLead = useCallback(async (campaignId) => {
+    // Guard: prevent duplicate concurrent fetch requests (e.g. rapid tapping on mobile)
+    if (fetchInFlightRef.current) {
+      console.warn('[useLead] Fetch already in progress, ignoring duplicate request');
+      return null;
+    }
+    fetchInFlightRef.current = true;
+
     setLoading(true);
     setError(null);
     setQaResults(null);
@@ -107,6 +124,7 @@ export function useLead() {
       return null;
     } finally {
       setLoading(false);
+      fetchInFlightRef.current = false;
     }
   }, [currentLead?.id]);
 
