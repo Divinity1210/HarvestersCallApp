@@ -54,11 +54,13 @@ export async function POST(request) {
 
     if (callRows.length > 0 && callRows[0].lead_id) {
       const leadId = callRows[0].lead_id;
-      const leadStatus = noAnswer ? 'no_answer' : 'completed';
+      const leadStatus = noAnswer 
+        ? (agentDisposition === 'busy' ? 'busy' : agentDisposition === 'wrong_number' ? 'wrong_number' : 'no_answer') 
+        : (agentDisposition || 'completed');
 
       await query(
         `UPDATE leads 
-         SET status = $1, locked_by = NULL, locked_at = NULL, updated_at = now() 
+         SET status = $1, locked_by = NULL, locked_device = NULL, locked_at = NULL, updated_at = now() 
          WHERE id = $2`,
         [leadStatus, leadId]
       );

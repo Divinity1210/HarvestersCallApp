@@ -4,8 +4,23 @@ import { useState, useCallback, useRef } from 'react';
 import { LEAD_STATUS } from '@/lib/constants';
 
 /**
- * Custom hook for lead management with atomic locking.
- * Handles: fetch next lead → lock → submit results → release.
+ * Returns a persistent, unique device identifier stored in localStorage.
+ * Ensures that multiple volunteer phones/devices using the same account
+ * are completely isolated and never conflict or receive duplicate contacts.
+ */
+export function getDeviceId() {
+  if (typeof window === 'undefined') return 'server';
+  let id = localStorage.getItem('harvesters_device_id');
+  if (!id) {
+    id = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+    localStorage.setItem('harvesters_device_id', id);
+  }
+  return id;
+}
+
+/**
+ * Custom hook for lead management with atomic locking and device isolation.
+ * Handles: fetch next lead → lock to device → submit results → release.
  */
 export function useLead() {
   const [currentLead, setCurrentLead] = useState(null);
@@ -17,8 +32,31 @@ export function useLead() {
   const pollTimeoutRef = useRef(null);
 
   /**
-   * Fetch and lock the next available lead for the current agent.
-   * Uses an API route to ensure atomic locking (prevents race conditions).
+   * Restore any active in-progress lead for this device (e.g., after browser refresh or SIM phone call).
+   */
+  const restoreActiveLead = useCallback((campaignId) => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const savedLead = localStorage.getItem('harvesters_active_lead');
+      const savedCall = localStorage.getItem('harvesters_active_call');
+      if (savedLead && savedCall) {
+        const leadObj = JSON.parse(savedLead);
+        const callObj = JSON.parse(savedCall);
+        if (!campaignId || leadObj.campaign_id === campaignId) {
+          setCurrentLead(leadObj);
+          setCurrentCall(callObj);
+          return true;
+        }
+      }
+    } catch (e) {
+      console.error('Error restoring active lead:', e);
+    }
+    return false;
+  }, []);
+
+  /**
+   * Fetch and lock the next available lead for this specific device.
+   * Strictly enforces: status = 'pending' AND call_attempts = 0.
    */
   const fetchNextLead = useCallback(async (campaignId) => {
     setLoading(true);
@@ -26,12 +64,14 @@ export function useLead() {
     setQaResults(null);
 
     try {
+      const deviceId = getDeviceId();
       const res = await fetch('/api/leads/fetch-next', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           campaignId,
           previousLeadId: currentLead?.id || null,
+          deviceId,
         }),
       });
 
@@ -39,8 +79,13 @@ export function useLead() {
 
       if (!res.ok) {
         if (res.status === 404) {
-          setError('No more leads available in this campaign.');
+          setError(data.error || 'All leads in this campaign have been contacted! Great job.');
           setCurrentLead(null);
+          setCurrentCall(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('harvesters_active_lead');
+            localStorage.removeItem('harvesters_active_call');
+          }
           return null;
         }
         throw new Error(data.error || 'Failed to fetch lead');
@@ -48,6 +93,13 @@ export function useLead() {
 
       setCurrentLead(data.lead);
       setCurrentCall(data.call);
+
+      // Persist in localStorage so if the mobile browser suspends during phone call, it is not lost
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('harvesters_active_lead', JSON.stringify(data.lead));
+        localStorage.setItem('harvesters_active_call', JSON.stringify(data.call));
+      }
+
       return data;
     } catch (err) {
       console.error('Fetch lead error:', err);
@@ -56,10 +108,11 @@ export function useLead() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentLead?.id]);
 
   /**
    * Release the current lead lock (e.g., agent skips or disconnects).
+   * Lead will be marked 'unreached' so no other agent is given it automatically.
    */
   const releaseLead = useCallback(async () => {
     if (!currentLead) return;
@@ -70,6 +123,10 @@ export function useLead() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadId: currentLead.id }),
       });
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('harvesters_active_lead');
+        localStorage.removeItem('harvesters_active_call');
+      }
       setCurrentLead(null);
       setCurrentCall(null);
     } catch (err) {
@@ -125,7 +182,6 @@ export function useLead() {
           return;
         }
 
-        // Wait 2 seconds and try again
         pollTimeoutRef.current = setTimeout(poll, 2000);
       } catch (err) {
         console.error('Poll error:', err);
@@ -151,6 +207,7 @@ export function useLead() {
           nextStepsConfirmed: confirmedData.nextSteps,
           testimonyConfirmed: confirmedData.testimony,
           agentDisposition: confirmedData.disposition,
+          durationSeconds: confirmedData.durationSeconds,
         }),
       });
 
@@ -159,7 +216,10 @@ export function useLead() {
         throw new Error(errData.error || 'Failed to submit results');
       }
 
-      // Reset for next lead
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('harvesters_active_lead');
+        localStorage.removeItem('harvesters_active_call');
+      }
       setCurrentLead(null);
       setCurrentCall(null);
       setQaResults(null);
@@ -193,6 +253,10 @@ export function useLead() {
         throw new Error('Failed to submit disposition');
       }
 
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('harvesters_active_lead');
+        localStorage.removeItem('harvesters_active_call');
+      }
       setCurrentLead(null);
       setCurrentCall(null);
       setQaResults(null);
@@ -213,6 +277,7 @@ export function useLead() {
     error,
     qaResults,
     processingAI,
+    restoreActiveLead,
     fetchNextLead,
     releaseLead,
     pollForResults,

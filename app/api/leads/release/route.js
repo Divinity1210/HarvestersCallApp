@@ -15,7 +15,7 @@ export async function POST(request) {
 
     await query(
       `UPDATE leads
-       SET status = 'pending', locked_by = NULL, locked_at = NULL, updated_at = now()
+       SET status = 'unreached', locked_by = NULL, locked_device = NULL, locked_at = NULL, updated_at = now()
        WHERE id = $1 AND status = 'locked'`,
       [leadId]
     );

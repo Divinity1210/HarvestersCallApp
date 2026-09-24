@@ -42,7 +42,9 @@ export default function AgentDashboard() {
         const active = (data?.campaigns || []).filter(c => c.status === 'active');
         if (active.length > 0) {
           setCampaigns(active);
-          setSelectedCampaign(active[0]);
+          const initial = active[0];
+          setSelectedCampaign(initial);
+          lead.restoreActiveLead(initial.id);
         }
       } catch (err) {
         console.error('Error fetching campaigns:', err);
@@ -242,6 +244,7 @@ export default function AgentDashboard() {
               onChange={(e) => {
                 const c = campaigns.find(c => c.id === e.target.value);
                 setSelectedCampaign(c);
+                if (c) lead.restoreActiveLead(c.id);
               }}
               aria-label="Select Campaign"
             >
