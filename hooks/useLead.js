@@ -226,7 +226,7 @@ export function useLead() {
     }
     setProcessingAI(true);
 
-    const maxAttempts = 30; // 30 × 2s = 60 seconds max wait
+    const maxAttempts = 45; // 45 × 2s = 90 seconds max wait (long calls + Twilio delay)
     let attempts = 0;
 
     const poll = async () => {

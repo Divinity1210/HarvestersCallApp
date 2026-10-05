@@ -442,6 +442,8 @@ export default function AgentDashboard() {
               qaResults={lead.qaResults}
               processing={lead.processingAI}
               nextStepsOptions={selectedCampaign?.next_steps_options || []}
+              campaignId={selectedCampaign?.id}
+              attendeeName={lead.currentLead?.full_name}
               onConfirm={handleConfirmResults}
               onCancel={handleCancelAIReview}
               onSkipAI={handleSkipAI}

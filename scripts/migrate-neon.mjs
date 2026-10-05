@@ -129,6 +129,7 @@ async function runMigration() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`ALTER TABLE qa_results ADD COLUMN IF NOT EXISTS ai_suggested_outcome TEXT`;
 
   // 7. Indexes
   await sql`CREATE INDEX IF NOT EXISTS idx_leads_campaign_status ON leads(campaign_id, status)`;

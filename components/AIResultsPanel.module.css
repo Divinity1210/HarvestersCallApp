@@ -339,6 +339,128 @@
   gap: var(--space-3);
 }
 
+/* Notes assistant */
+.assistHint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: calc(var(--space-2) * -1) 0 var(--space-3);
+}
+
+.reviewHint {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+.notesWrap {
+  position: relative;
+  border-radius: var(--radius-md);
+  transition: box-shadow var(--transition-fast);
+}
+
+.notesWrapLive {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-danger) 55%, transparent);
+}
+
+.liveCaption {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-danger);
+  animation: pulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.assistBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.micBtn,
+.assistBtn,
+.undoBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-full);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast), opacity var(--transition-fast);
+}
+
+.micBtn:active,
+.assistBtn:active,
+.undoBtn:active { transform: scale(0.96); }
+
+.micBtn:focus-visible,
+.assistBtn:focus-visible,
+.undoBtn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.micBtn {
+  border: 1px solid var(--border-default);
+  background: var(--surface-input);
+  color: var(--text-primary);
+}
+
+.micBtnLive {
+  border-color: var(--color-danger);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.assistBtn {
+  flex: 1 1 180px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--color-accent) 85%, #fff 0%),
+    color-mix(in srgb, var(--color-accent) 65%, var(--color-info, #6aa8ff)));
+  color: #fff;
+}
+
+.assistBtn:disabled,
+.micBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.undoBtn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.assistError {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liveDot { animation: none; }
+}
+
 @media (max-width: 768px) {
   .container {
     padding-bottom: 120px;
