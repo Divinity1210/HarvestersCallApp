@@ -73,6 +73,9 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
               {roundLabel(lead.retry_round)} try
             </span>
           )}
+          <span className={styles.lockBadge} title="Protected by device lock — no other volunteer can be assigned this contact">
+            🔒 Locked
+          </span>
         </div>
         <span className={`badge ${
           phase === 'calling' ? 'badge-success' :

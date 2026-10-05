@@ -20,6 +20,13 @@ export async function POST(request) {
       [leadId]
     );
 
+    await query(
+      `UPDATE calls
+       SET call_status = 'canceled', ended_at = COALESCE(ended_at, now())
+       WHERE lead_id = $1 AND call_status = 'initiating'`,
+      [leadId]
+    );
+
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('Release lead error:', err);

@@ -45,14 +45,31 @@ export async function POST(request) {
          WHERE id = $1 AND status = 'locked'`,
         [previousLeadId]
       );
+      // Clean up any unfinalized call for this lead
+      await query(
+        `UPDATE calls
+         SET call_status = 'canceled', ended_at = COALESCE(ended_at, now())
+         WHERE lead_id = $1 AND call_status = 'initiating'`,
+        [previousLeadId]
+      );
     }
 
     // ── Step 2: Expire abandoned locks (>30 min → unreached) ──
-    await query(
+    const expiredRows = await query(
       `UPDATE leads 
        SET status = 'unreached', locked_by = NULL, locked_device = NULL, locked_at = NULL, updated_at = now() 
-       WHERE status = 'locked' AND locked_at < now() - interval '30 minutes'`
+       WHERE status = 'locked' AND locked_at < now() - interval '30 minutes'
+       RETURNING id`
     );
+    if (expiredRows.length > 0) {
+      const expiredIds = expiredRows.map(e => e.id);
+      await query(
+        `UPDATE calls
+         SET call_status = 'canceled', ended_at = COALESCE(ended_at, now())
+         WHERE lead_id = ANY($1::uuid[]) AND call_status = 'initiating'`,
+        [expiredIds]
+      );
+    }
 
     // ── Step 3: Device resume — return this device's existing locked lead ──
     if (cleanDeviceId) {
@@ -61,7 +78,7 @@ export async function POST(request) {
                 l.retry_round, l.last_outcome,
                 c.id as call_id
          FROM leads l
-         LEFT JOIN calls c ON c.lead_id = l.id
+         LEFT JOIN calls c ON c.lead_id = l.id AND c.call_status = 'initiating'
          WHERE l.campaign_id = $1
            AND l.status = 'locked'
            AND l.locked_device = $2
@@ -72,6 +89,12 @@ export async function POST(request) {
 
       if (existingLocked.length > 0) {
         const l = existingLocked[0];
+        // Refresh lock timestamp so active device retains it
+        await query(
+          `UPDATE leads SET locked_at = now(), updated_at = now() WHERE id = $1`,
+          [l.id]
+        );
+
         let callId = l.call_id;
         if (!callId) {
           const callRows = await query(
@@ -102,20 +125,27 @@ export async function POST(request) {
       }
     }
 
-    // ── Step 4: Atomic fetch-and-lock with PHONE-LEVEL exclusion + GAP + VERIFY ──
+    // ── Step 4: Atomic fetch-and-lock with GLOBAL PHONE-LEVEL exclusion + GAP + VERIFY ──
     const GAP_SIZE = 10;
     const MAX_RETRIES = 3;
     let lockedLead = null;
 
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      // Phase A: Try with gap enforcement + phone exclusion
+      // Phase A: Try with gap enforcement + GLOBAL phone exclusion (across all campaigns)
       const gapLockQuery = `
         WITH locked_phones AS (
           SELECT DISTINCT phone_number
           FROM leads
-          WHERE campaign_id = $1
-            AND status = 'locked'
+          WHERE status = 'locked'
             AND phone_number IS NOT NULL
+        ),
+        recent_called_phones AS (
+          SELECT DISTINCT l.phone_number
+          FROM leads l
+          JOIN calls c ON c.lead_id = l.id
+          WHERE c.call_status IN ('completed', 'in-progress', 'ringing')
+            AND c.initiated_at > now() - interval '4 hours'
+            AND l.phone_number IS NOT NULL
         ),
         locked_indices AS (
           SELECT row_index
@@ -132,6 +162,9 @@ export async function POST(request) {
             AND l.call_attempts = 0
             AND NOT EXISTS (
               SELECT 1 FROM locked_phones lp WHERE lp.phone_number = l.phone_number
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM recent_called_phones rcp WHERE rcp.phone_number = l.phone_number
             )
             AND NOT EXISTS (
               SELECT 1 FROM locked_indices li
@@ -159,14 +192,13 @@ export async function POST(request) {
 
       let lockedRows = await query(gapLockQuery, [campaignId, userId, cleanDeviceId]);
 
-      // Phase B: Fallback — relax the gap constraint but KEEP the phone exclusion
+      // Phase B: Fallback — relax the gap constraint but KEEP the GLOBAL phone exclusion
       if (lockedRows.length === 0) {
         const fallbackLockQuery = `
           WITH locked_phones AS (
             SELECT DISTINCT phone_number
             FROM leads
-            WHERE campaign_id = $1
-              AND status = 'locked'
+            WHERE status = 'locked'
               AND phone_number IS NOT NULL
           ),
           candidate AS (
@@ -208,22 +240,21 @@ export async function POST(request) {
 
       const candidate = lockedRows[0];
 
-      // ── VERIFICATION: Confirm no other device holds a lock on this phone number ──
+      // ── VERIFICATION: Confirm no other device holds a lock on this phone number (GLOBAL across ALL campaigns) ──
       const dupeCheck = await query(
-        `SELECT id, locked_device 
+        `SELECT id, campaign_id, locked_device 
          FROM leads 
-         WHERE campaign_id = $1 
-           AND phone_number = $2 
+         WHERE phone_number = $1 
            AND status = 'locked' 
-           AND id != $3`,
-        [campaignId, candidate.phone_number, candidate.id]
+           AND id != $2`,
+        [candidate.phone_number, candidate.id]
       );
 
       if (dupeCheck.length > 0) {
         // Another device ALSO has this phone locked — release ours and retry
         console.warn(
           `[fetch-next] Duplicate phone lock detected for ${candidate.phone_number}. ` +
-          `Our lead=${candidate.id}, conflict leads=[${dupeCheck.map(d => d.id).join(',')}]. Releasing and retrying (attempt ${attempt + 1}).`
+          `Our lead=${candidate.id}, conflict leads=[${dupeCheck.map(d => `${d.id}(camp:${d.campaign_id})`).join(',')}]. Releasing and retrying (attempt ${attempt + 1}).`
         );
         await query(
           `UPDATE leads 

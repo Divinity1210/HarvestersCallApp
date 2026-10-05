@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { LEAD_STATUS } from '@/lib/constants';
 
 /**
@@ -42,27 +42,82 @@ export function useLead() {
   const fetchInFlightRef = useRef(false);
 
   /**
-   * Restore any active in-progress lead for this device (e.g., after browser refresh or SIM phone call).
+   * Restore any active in-progress lead for this device.
+   * Strictly verifies with the PostgreSQL server so that stale/expired leads
+   * are never surfaced to the volunteer.
    */
-  const restoreActiveLead = useCallback((campaignId) => {
+  const restoreActiveLead = useCallback(async (campaignId) => {
     if (typeof window === 'undefined') return false;
+    const deviceId = getDeviceId();
+
     try {
-      const savedLead = localStorage.getItem('harvesters_active_lead');
-      const savedCall = localStorage.getItem('harvesters_active_call');
-      if (savedLead && savedCall) {
-        const leadObj = JSON.parse(savedLead);
-        const callObj = JSON.parse(savedCall);
-        if (!campaignId || leadObj.campaign_id === campaignId) {
-          setCurrentLead(leadObj);
-          setCurrentCall(callObj);
+      const url = campaignId 
+        ? `/api/leads/active?campaignId=${encodeURIComponent(campaignId)}&deviceId=${encodeURIComponent(deviceId)}`
+        : `/api/leads/active?deviceId=${encodeURIComponent(deviceId)}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.active && data.lead) {
+          setCurrentLead(data.lead);
+          setCurrentCall(data.call || null);
+          localStorage.setItem('harvesters_active_lead', JSON.stringify(data.lead));
+          if (data.call) localStorage.setItem('harvesters_active_call', JSON.stringify(data.call));
           return true;
         }
       }
-    } catch (e) {
-      console.error('Error restoring active lead:', e);
+    } catch (err) {
+      console.warn('[useLead] Active lead verification error:', err);
     }
+
+    // Server confirmed no active lock exists: purge stale cache
+    localStorage.removeItem('harvesters_active_lead');
+    localStorage.removeItem('harvesters_active_call');
+    setCurrentLead(null);
+    setCurrentCall(null);
     return false;
   }, []);
+
+  /**
+   * Heartbeat: keeps the active lead lock fresh in PostgreSQL while the agent
+   * has the attendee card open or is conducting an extended call.
+   */
+  useEffect(() => {
+    if (!currentLead?.id) return;
+
+    const pingHeartbeat = async () => {
+      try {
+        const deviceId = getDeviceId();
+        const res = await fetch('/api/leads/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            leadId: currentLead.id,
+            deviceId,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success === false && data.reason === 'lock_lost') {
+            console.warn('[useLead] Lock lost on lead:', currentLead.id);
+            setError('Your contact lock expired after inactivity. Please fetch your next attendee.');
+            setCurrentLead(null);
+            setCurrentCall(null);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('harvesters_active_lead');
+              localStorage.removeItem('harvesters_active_call');
+            }
+          }
+        }
+      } catch (err) {
+        // silent transient network glitch
+      }
+    };
+
+    // Ping every 90 seconds (1.5 minutes)
+    const interval = setInterval(pingHeartbeat, 90000);
+    return () => clearInterval(interval);
+  }, [currentLead?.id]);
 
   /**
    * Fetch and lock the next available lead for this specific device.

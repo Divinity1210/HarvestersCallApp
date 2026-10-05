@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Leaderboard from '@/components/Leaderboard';
+import CampaignProgress from '@/components/CampaignProgress';
 import styles from './admin.module.css';
 
 export default function AdminDashboard() {
@@ -188,15 +189,28 @@ export default function AdminDashboard() {
         <h2 className={styles.sectionTitle}>Active Campaigns</h2>
         <div className={styles.campaignGrid}>
           {campaigns.filter(c => c.status === 'active').map(campaign => (
-            <div key={campaign.id} className="glass-card" style={{ padding: 'var(--space-5)' }}>
+            <div key={campaign.id} className="glass-card" style={{ padding: 'var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <div className={styles.campaignHeader}>
-                <h3 className={styles.campaignName}>{campaign.name}</h3>
+                <div>
+                  <h3 className={styles.campaignName}>{campaign.name}</h3>
+                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                    Mode: {campaign.call_mode === 'device' ? '📱 Mobile / SIM' : '☎️ Twilio WebRTC'} • Created {new Date(campaign.created_at).toLocaleDateString()}
+                  </span>
+                </div>
                 <span className="badge badge-success">Active</span>
               </div>
-              <p className={styles.campaignDesc}>{campaign.description || 'No description'}</p>
-              <div className={styles.campaignMeta}>
-                <span>📋 {(campaign.next_steps_options || []).length} next steps</span>
-                <span>📅 {new Date(campaign.created_at).toLocaleDateString()}</span>
+              {campaign.description && (
+                <p className={styles.campaignDesc} style={{ margin: 0 }}>{campaign.description}</p>
+              )}
+              {campaign.stats && (
+                <div style={{ marginTop: 'var(--space-1)' }}>
+                  <CampaignProgress stats={campaign.stats} />
+                </div>
+              )}
+              <div style={{ marginTop: 'auto', paddingTop: 'var(--space-2)', display: 'flex', justifyContent: 'flex-end' }}>
+                <a href="/admin/campaigns" className="btn btn-ghost btn-sm" style={{ fontSize: '12px' }}>
+                  Manage & Re-queue →
+                </a>
               </div>
             </div>
           ))}

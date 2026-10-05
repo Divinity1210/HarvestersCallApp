@@ -73,6 +73,19 @@
   border-radius: var(--radius-full);
 }
 
+.lockBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+}
+
 .skeleton {
   padding: var(--space-4) var(--space-2);
 }

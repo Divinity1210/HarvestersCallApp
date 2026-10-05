@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { outcomeLabel } from '@/lib/leadOutcomes';
 import styles from './stats.module.css';
 
 export default function AgentStatsPage() {
@@ -156,42 +157,61 @@ export default function AgentStatsPage() {
               </div>
             ) : (
               <div className={styles.callList}>
-                {recentCalls.map(call => (
-                  <div key={call.id} className={`glass-card ${styles.callRow}`}>
-                    <div className={styles.callInfo}>
-                      <span className={styles.callName}>{call.leadName}</span>
-                      <span className={styles.callDate}>
-                        {new Date(call.created_at).toLocaleDateString()} at{' '}
-                        {new Date(call.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <div className={styles.callMeta}>
-                      <span className={`badge ${
-                        call.call_status === 'completed' ? 'badge-success' :
-                        call.call_status === 'no-answer' ? 'badge-warning' :
-                        'badge-danger'
-                      }`}>
-                        {call.call_status}
-                      </span>
-                      {call.duration_seconds > 0 && (
-                        <span className={styles.callDuration}>
-                          {formatDuration(call.duration_seconds)}
+                {recentCalls.map(call => {
+                  const rawOutcome = call.agent_disposition || call.call_status;
+                  const isPositive = rawOutcome === 'completed' || rawOutcome === 'callback_requested';
+                  const isNeutral = rawOutcome === 'no_answer' || rawOutcome === 'no-answer' || rawOutcome === 'busy';
+                  const label = outcomeLabel(rawOutcome);
+
+                  return (
+                    <div key={call.id} className={`glass-card ${styles.callRow}`}>
+                      <div className={styles.callInfo}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span className={styles.callName}>{call.leadName}</span>
+                          {call.campaign_name && (
+                            <span style={{ fontSize: '10px', background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text-secondary)', padding: '2px 6px', borderRadius: '4px' }}>
+                              {call.campaign_name}
+                            </span>
+                          )}
+                        </div>
+                        <span className={styles.callDate}>
+                          {new Date(call.created_at).toLocaleDateString()} at{' '}
+                          {new Date(call.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                      )}
-                      {call.qa?.script_adherence_score != null && (
-                        <span className={styles.callScore} style={{
-                          color: call.qa.script_adherence_score >= 80 ? 'var(--color-success)' :
-                            call.qa.script_adherence_score >= 50 ? 'var(--color-warning)' : 'var(--color-danger)',
-                        }}>
-                          {Math.round(call.qa.script_adherence_score)}%
+                      </div>
+                      <div className={styles.callMeta}>
+                        <span className={`badge ${
+                          isPositive ? 'badge-success' :
+                          isNeutral ? 'badge-warning' :
+                          'badge-danger'
+                        }`}>
+                          {label}
                         </span>
-                      )}
-                      {call.qa?.flagged && (
-                        <span className="badge badge-danger" style={{ fontSize: 'var(--text-xs)' }}>🚩</span>
-                      )}
+                        {call.duration_seconds > 0 && (
+                          <span className={styles.callDuration}>
+                            ⏱️ {formatDuration(call.duration_seconds)}
+                          </span>
+                        )}
+                        {call.qa?.testimony_confirmed && (
+                          <span className="badge badge-accent" style={{ fontSize: '11px' }} title="Testimony recorded">
+                            🙏 Testimony
+                          </span>
+                        )}
+                        {call.qa?.script_adherence_score != null && (
+                          <span className={styles.callScore} style={{
+                            color: call.qa.script_adherence_score >= 80 ? 'var(--color-success)' :
+                              call.qa.script_adherence_score >= 50 ? 'var(--color-warning)' : 'var(--color-danger)',
+                          }}>
+                            {Math.round(call.qa.script_adherence_score)}%
+                          </span>
+                        )}
+                        {call.qa?.flagged && (
+                          <span className="badge badge-danger" style={{ fontSize: 'var(--text-xs)' }}>🚩</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

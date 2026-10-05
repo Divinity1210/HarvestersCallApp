@@ -61,7 +61,7 @@ export async function GET(request) {
     }, 0);
 
     return NextResponse.json({
-      version: '2026-10-05-v2',
+      version: '2026-10-05-v3',
       stats: {
         totalCalls,
         completedCalls: completedCalls.length,
