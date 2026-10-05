@@ -28,10 +28,14 @@ async function runMigration() {
       full_name TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'agent' CHECK (role IN ('agent', 'admin', 'super_admin')),
       is_active BOOLEAN DEFAULT true,
+      must_change_password BOOLEAN NOT NULL DEFAULT false,
+      last_login_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ`;
 
   // 3. Campaigns Table
   await sql`

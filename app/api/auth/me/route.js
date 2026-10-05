@@ -11,7 +11,7 @@ export async function GET() {
 
     // Refresh user state from database
     const rows = await query(
-      `SELECT id, email, full_name, role, is_active 
+      `SELECT id, email, full_name, role, is_active, must_change_password 
        FROM users 
        WHERE id = $1 
        LIMIT 1`,
@@ -25,7 +25,13 @@ export async function GET() {
     const u = rows[0];
     return NextResponse.json({
       user: { id: u.id, email: u.email },
-      profile: { id: u.id, full_name: u.full_name, role: u.role, is_active: u.is_active },
+      profile: {
+        id: u.id,
+        full_name: u.full_name,
+        role: u.role,
+        is_active: u.is_active,
+        must_change_password: !!u.must_change_password,
+      },
     });
   } catch (err) {
     console.error('Session verify error:', err);

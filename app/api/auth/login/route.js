@@ -15,7 +15,7 @@ export async function POST(req) {
 
     const cleanEmail = email.trim().toLowerCase();
     const rows = await query(
-      `SELECT id, email, password_hash, full_name, role, is_active 
+      `SELECT id, email, password_hash, full_name, role, is_active, must_change_password 
        FROM users 
        WHERE LOWER(email) = $1 
        LIMIT 1`,
@@ -65,7 +65,12 @@ export async function POST(req) {
       full_name: userRecord.full_name,
       role: userRecord.role,
       is_active: userRecord.is_active,
+      must_change_password: !!userRecord.must_change_password,
     };
+
+    try {
+      await query(`UPDATE users SET last_login_at = now() WHERE id = $1`, [userRecord.id]);
+    } catch { /* non-critical */ }
 
     const response = NextResponse.json({
       user: userObj,

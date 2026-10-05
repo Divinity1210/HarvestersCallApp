@@ -11,12 +11,22 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
-  const { signIn, signInWithGoogle, user, profile, loading } = useAuth();
+  const [showPassword, setShowPassword] = useState(false);
+
+  // First sign-in (temporary password) step
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [justSignedIn, setJustSignedIn] = useState(false);
+
+  const { signIn, signOut, setProfile, user, profile, loading } = useAuth();
   const router = useRouter();
 
-  // Redirect if already logged in
+  const mustChange = !!(user && profile?.must_change_password);
+
+  // Redirect if already logged in (and their own password is set)
   useEffect(() => {
-    if (!loading && user && profile) {
+    if (!loading && user && profile && !profile.must_change_password) {
       if (profile.role === 'admin' || profile.role === 'super_admin') {
         router.push('/admin');
       } else {
@@ -25,16 +35,51 @@ export default function LoginPage() {
     }
   }, [user, profile, loading, router]);
 
+  // Explain why they're back here if their session expired mid-shift
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('harvesters_session_expired')) {
+        sessionStorage.removeItem('harvesters_session_expired');
+        setFormError('Your session expired. Please sign in again to continue calling.');
+      }
+    } catch {}
+  }, []);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setFormError('');
     setIsLoading(true);
 
     try {
-      await signIn(email, password);
-      // Redirect will happen via the useEffect above
+      await signIn(email.trim(), password);
+      setCurrentPassword(password);
+      setJustSignedIn(true);
+      // Redirect (or the set-password step) happens via the effect above
     } catch (err) {
       setFormError(err.message || 'Invalid credentials. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSetPassword = async (e) => {
+    e.preventDefault();
+    setFormError('');
+    if (newPassword.length < 8) return setFormError('Use at least 8 characters.');
+    if (newPassword !== confirmPassword) return setFormError('The two passwords do not match.');
+
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not update password');
+      setProfile(p => ({ ...p, must_change_password: false }));
+    } catch (err) {
+      setFormError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -48,6 +93,23 @@ export default function LoginPage() {
     );
   }
 
+  const errorBanner = formError && (
+    <div className={styles.errorBanner} role="alert">
+      <span>⚠️</span>
+      <span>{formError}</span>
+    </div>
+  );
+
+  const showToggle = (size = 'var(--text-xs)') => (
+    <label style={{
+      display: 'flex', gap: 'var(--space-2)', alignItems: 'center',
+      fontSize: size, color: 'var(--text-tertiary)', marginTop: 'var(--space-2)', cursor: 'pointer',
+    }}>
+      <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />
+      Show password
+    </label>
+  );
+
   return (
     <div className={styles.loginContainer}>
       {/* Decorative elements */}
@@ -58,9 +120,9 @@ export default function LoginPage() {
       <div className={styles.loginCard}>
         {/* Logo & Branding */}
         <div className={styles.logoSection}>
-          <img 
-            src="/harvesters-logo.svg" 
-            alt="Harvesters International Christian Centre" 
+          <img
+            src="/harvesters-logo.svg"
+            alt="Harvesters International Christian Centre"
             className={styles.logoImage}
             style={{ width: 180, height: 'auto', marginBottom: 'var(--space-4)' }}
           />
@@ -68,92 +130,137 @@ export default function LoginPage() {
           <p className={styles.appSubtitle}>AI-Powered Follow-Up Call System</p>
         </div>
 
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className={styles.loginForm}>
-          {formError && (
-            <div className={styles.errorBanner}>
-              <span>⚠️</span>
-              <span>{formError}</span>
+        {mustChange ? (
+          /* ── First sign-in: choose your own password ── */
+          <form onSubmit={handleSetPassword} className={styles.loginForm}>
+            <div style={{ textAlign: 'center' }}>
+              <h2 style={{ fontSize: 'var(--text-lg)', marginBottom: 'var(--space-1)' }}>
+                Welcome, {profile?.full_name?.split(' ')[0] || 'friend'}! 👋
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
+                You signed in with a temporary password. Choose your own to continue.
+              </p>
             </div>
-          )}
 
-          <div className="form-group">
-            <label htmlFor="email" className="form-label">Email Address</label>
-            <input
-              id="email"
-              type="email"
-              className="form-input"
-              placeholder="agent@harvesters.org"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              autoFocus
-            />
-          </div>
+            {errorBanner}
 
-          <div className="form-group">
-            <label htmlFor="password" className="form-label">Password</label>
-            <input
-              id="password"
-              type="password"
-              className="form-input"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </div>
-
-          <button
-            type="submit"
-            className={`btn btn-primary btn-lg ${styles.loginBtn}`}
-            disabled={isLoading || !email || !password}
-          >
-            {isLoading ? (
-              <>
-                <div className="spinner spinner-sm" style={{ borderTopColor: 'var(--text-inverse)' }}></div>
-                Signing in...
-              </>
-            ) : (
-              <>
-                🔐 Sign In
-              </>
+            {!justSignedIn && (
+              <div className="form-group">
+                <label htmlFor="current-password" className="form-label">Temporary password</label>
+                <input
+                  id="current-password"
+                  type={showPassword ? 'text' : 'password'}
+                  className="form-input"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </div>
             )}
-          </button>
-        </form>
 
-        {/* Divider */}
-        <div className={styles.divider}>
-          <span>or</span>
-        </div>
+            <div className="form-group">
+              <label htmlFor="new-password" className="form-label">New password</label>
+              <input
+                id="new-password"
+                type={showPassword ? 'text' : 'password'}
+                className="form-input"
+                placeholder="At least 8 characters"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={8}
+                autoComplete="new-password"
+                autoFocus
+              />
+            </div>
 
-        {/* Google OAuth */}
-        <button
-          type="button"
-          className={`btn btn-secondary btn-lg ${styles.loginBtn}`}
-          onClick={async () => {
-            try {
-              await signInWithGoogle();
-            } catch (err) {
-              setFormError(err.message || 'Google sign-in failed');
-            }
-          }}
-          disabled={isLoading}
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18" style={{ flexShrink: 0 }}>
-            <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615Z"/>
-            <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18Z"/>
-            <path fill="#FBBC05" d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.997 8.997 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332Z"/>
-            <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58Z"/>
-          </svg>
-          Sign in with Google
-        </button>
+            <div className="form-group">
+              <label htmlFor="confirm-password" className="form-label">Confirm new password</label>
+              <input
+                id="confirm-password"
+                type={showPassword ? 'text' : 'password'}
+                className="form-input"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+              />
+              {showToggle('var(--text-sm)')}
+            </div>
 
-        <p className={styles.footer}>
-          Protected system. Contact your administrator for access.
-        </p>
+            <button
+              id="set-password-btn"
+              type="submit"
+              className={`btn btn-primary btn-lg ${styles.loginBtn}`}
+              disabled={isLoading || !newPassword || !confirmPassword || !currentPassword}
+            >
+              {isLoading ? 'Saving…' : '✅ Save password & continue'}
+            </button>
+
+            <button type="button" className="btn btn-ghost btn-sm" onClick={signOut}>
+              Not you? Sign out
+            </button>
+          </form>
+        ) : (
+          <>
+            {/* ── Standard sign-in ── */}
+            <form onSubmit={handleSubmit} className={styles.loginForm}>
+              {errorBanner}
+
+              <div className="form-group">
+                <label htmlFor="email" className="form-label">Email Address</label>
+                <input
+                  id="email"
+                  type="email"
+                  className="form-input"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="password" className="form-label">Password</label>
+                <input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+                {showToggle()}
+              </div>
+
+              <button
+                id="sign-in-btn"
+                type="submit"
+                className={`btn btn-primary btn-lg ${styles.loginBtn}`}
+                disabled={isLoading || !email || !password}
+              >
+                {isLoading ? (
+                  <>
+                    <div className="spinner spinner-sm" style={{ borderTopColor: 'var(--text-inverse)' }}></div>
+                    Signing in...
+                  </>
+                ) : (
+                  <>🔐 Sign In</>
+                )}
+              </button>
+            </form>
+
+            <p className={styles.footer}>
+              New volunteer or forgot your password? Ask your team admin. They can send your
+              sign-in details on WhatsApp in seconds.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

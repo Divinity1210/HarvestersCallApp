@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import styles from './agents.module.css';
+import ShareCredentials from '@/components/ShareCredentials';
 
 const ROLE_OPTIONS = [
   { value: 'agent', label: '📞 Agent', desc: 'Can make calls and view scripts' },
@@ -23,6 +24,9 @@ export default function AgentManagementPage() {
   const [editingAgent, setEditingAgent] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState('all');
+  const [shareInfo, setShareInfo] = useState(null); // { name, credentials, title }
+  const [actionError, setActionError] = useState('');
+  const [resettingId, setResettingId] = useState(null);
 
   // Fetch agents
   useEffect(() => {
@@ -63,14 +67,13 @@ export default function AgentManagementPage() {
 
       const data = await res.json();
       if (res.ok) {
-        setInviteStatus(`✅ ${data.message}`);
+        setShowInvite(false);
+        setInviteStatus('');
+        setShareInfo({ name: inviteName.trim(), credentials: data.credentials, title: '🎉 Volunteer added' });
         setInviteEmail('');
         setInviteName('');
-        setTimeout(() => {
-          setShowInvite(false);
-          setInviteStatus('');
-          fetchAgents();
-        }, 2000);
+        setInviteRole('agent');
+        fetchAgents();
       } else {
         setInviteStatus(`Error: ${data.error}`);
       }
@@ -78,6 +81,28 @@ export default function AgentManagementPage() {
       setInviteStatus(`Error: ${err.message}`);
     } finally {
       setIsInviting(false);
+    }
+  };
+
+  /** Issue a fresh temporary password */
+  const handleResetPassword = async (agent) => {
+    if (!confirm(`Reset password for ${agent.full_name}? Their current password will stop working.`)) return;
+    setResettingId(agent.id);
+    setActionError('');
+    try {
+      const res = await fetch('/api/agents/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Reset failed');
+      setShareInfo({ name: agent.full_name, credentials: data.credentials, title: '🔑 New temporary password' });
+      fetchAgents();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setResettingId(null);
     }
   };
 
@@ -94,6 +119,9 @@ export default function AgentManagementPage() {
         a.id === agentId ? { ...a, role: newRole } : a
       ));
       setEditingAgent(null);
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setActionError(data.error || 'Could not update role');
     }
   };
 
@@ -109,13 +137,18 @@ export default function AgentManagementPage() {
       setAgents(prev => prev.map(a =>
         a.id === agentId ? { ...a, is_active: !currentActive } : a
       ));
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setActionError(data.error || 'Could not update status');
     }
   };
 
   // Filter agents
   const filteredAgents = agents.filter(a => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch = !searchQuery ||
-      a.full_name.toLowerCase().includes(searchQuery.toLowerCase());
+      a.full_name?.toLowerCase().includes(q) ||
+      a.email?.toLowerCase().includes(q);
     const matchesRole = filterRole === 'all' || a.role === filterRole;
     return matchesSearch && matchesRole;
   });
@@ -139,7 +172,7 @@ export default function AgentManagementPage() {
         <div className={styles.headerActions}>
           <a href="/admin" className="btn btn-ghost">← Dashboard</a>
           <button className="btn btn-primary" onClick={() => setShowInvite(true)}>
-            ➕ Invite Agent
+            ➕ Add Volunteer
           </button>
         </div>
       </div>
@@ -172,7 +205,7 @@ export default function AgentManagementPage() {
       <div className={styles.filters}>
         <input
           className="form-input"
-          placeholder="🔍 Search by name..."
+          placeholder="🔍 Search by name or email..."
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
           style={{ maxWidth: 300 }}
@@ -190,7 +223,16 @@ export default function AgentManagementPage() {
         </select>
       </div>
 
-      {/* Agent List */}
+      {actionError && (
+        <div role="alert" style={{
+          padding: 'var(--space-3)', marginBottom: 'var(--space-4)', borderRadius: 'var(--radius-md)',
+          background: 'var(--color-danger-bg)', color: 'var(--color-danger)', fontSize: 'var(--text-sm)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        }}>
+          <span>⚠️ {actionError}</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => setActionError('')}>✕</button>
+        </div>
+      )}
       {loading ? (
         <div className="loading-state">
           <div className="spinner spinner-lg"></div>
@@ -223,10 +265,18 @@ export default function AgentManagementPage() {
                     {agent.role === 'super_admin' ? '👑 Super Admin' :
                      agent.role === 'admin' ? '🛡️ Admin' : '📞 Agent'}
                   </span>
+                  <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {agent.email}
+                  </span>
                 </div>
-                <span className={`badge ${agent.is_active ? 'badge-success' : 'badge-warning'}`}>
-                  {agent.is_active ? 'Active' : 'Inactive'}
-                </span>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  <span className={`badge ${agent.is_active ? 'badge-success' : 'badge-warning'}`}>
+                    {agent.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                  {agent.must_change_password && (
+                    <span className="badge badge-info" title="Has not chosen their own password yet">⏳ Awaiting sign-in</span>
+                  )}
+                </div>
               </div>
 
               <div className={styles.agentMeta}>
@@ -235,8 +285,16 @@ export default function AgentManagementPage() {
                   <span className={styles.metaValue}>{agent.callCount}</span>
                 </div>
                 <div className={styles.metaItem}>
-                  <span className={styles.metaLabel}>Joined</span>
-                  <span className={styles.metaValue}>{new Date(agent.created_at).toLocaleDateString()}</span>
+                  <span className={styles.metaLabel}>Last call</span>
+                  <span className={styles.metaValue}>
+                    {agent.lastCallAt ? new Date(agent.lastCallAt).toLocaleDateString() : '—'}
+                  </span>
+                </div>
+                <div className={styles.metaItem}>
+                  <span className={styles.metaLabel}>Last sign-in</span>
+                  <span className={styles.metaValue}>
+                    {agent.last_login_at ? new Date(agent.last_login_at).toLocaleDateString() : 'Never'}
+                  </span>
                 </div>
               </div>
 
@@ -271,6 +329,13 @@ export default function AgentManagementPage() {
                         ✏️ Change Role
                       </button>
                       <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => handleResetPassword(agent)}
+                        disabled={resettingId === agent.id}
+                      >
+                        {resettingId === agent.id ? 'Resetting…' : '🔑 Reset password'}
+                      </button>
+                      <button
                         className={`btn btn-sm ${agent.is_active ? 'btn-warning' : 'btn-success'}`}
                         onClick={() => handleToggleActive(agent.id, agent.is_active)}
                         style={{ fontSize: 'var(--text-xs)' }}
@@ -291,7 +356,7 @@ export default function AgentManagementPage() {
         <div className="modal-overlay" onClick={() => { setShowInvite(false); setInviteStatus(''); }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div className="modal-header">
-              <h2 className="modal-title">➕ Invite New Agent</h2>
+              <h2 className="modal-title">➕ Add Team Member</h2>
               <button className="btn btn-ghost btn-sm" onClick={() => { setShowInvite(false); setInviteStatus(''); }}>✕</button>
             </div>
 
@@ -353,12 +418,28 @@ export default function AgentManagementPage() {
                 disabled={!inviteEmail.trim() || !inviteName.trim() || isInviting}
               >
                 {isInviting ? (
-                  <><div className="spinner spinner-sm"></div> Sending Invite...</>
+                  <><div className="spinner spinner-sm"></div> Creating account...</>
                 ) : (
-                  '📧 Send Invite'
+                  '➕ Create account & get sign-in details'
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share credentials modal */}
+      {shareInfo && (
+        <div className="modal-overlay">
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+            <div className="modal-header">
+              <h2 className="modal-title">{shareInfo.title}</h2>
+            </div>
+            <ShareCredentials
+              name={shareInfo.name}
+              credentials={shareInfo.credentials}
+              onDone={() => setShareInfo(null)}
+            />
           </div>
         </div>
       )}

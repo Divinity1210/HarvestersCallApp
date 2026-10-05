@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { DEFAULT_NEXT_STEPS } from '@/lib/constants';
+import NextStepsEditor from '@/components/NextStepsEditor';
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([]);
@@ -461,15 +462,11 @@ export default function CampaignsPage() {
                 </span>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Next Steps Options (one per line)</label>
-                <textarea
-                  className="form-textarea"
-                  value={form.nextStepsOptions}
-                  onChange={e => setForm(p => ({ ...p, nextStepsOptions: e.target.value }))}
-                  rows={6}
-                />
-              </div>
+              <NextStepsEditor
+                id="create-next-steps"
+                value={form.nextStepsOptions}
+                onChange={v => setForm(p => ({ ...p, nextStepsOptions: v }))}
+              />
 
               <div className="form-group">
                 <label className="form-label">Consent Message</label>
@@ -797,15 +794,11 @@ export default function CampaignsPage() {
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Next Steps Options (one per line)</label>
-                <textarea
-                  className="form-textarea"
-                  value={form.nextStepsOptions}
-                  onChange={e => setForm(p => ({ ...p, nextStepsOptions: e.target.value }))}
-                  rows={6}
-                />
-              </div>
+              <NextStepsEditor
+                id="edit-next-steps"
+                value={form.nextStepsOptions}
+                onChange={v => setForm(p => ({ ...p, nextStepsOptions: v }))}
+              />
 
               <div className="grid-2">
                 <div className="form-group">

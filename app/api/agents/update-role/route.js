@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getSessionUser, isAdminRole } from '@/lib/auth';
 
 /**
  * POST /api/agents/update-role
@@ -7,10 +8,27 @@ import { query } from '@/lib/db';
  */
 export async function POST(request) {
   try {
+    const session = await getSessionUser();
+    if (!session || !isAdminRole(session.role)) {
+      return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
+    }
+
     const { agentId, role, isActive } = await request.json();
 
     if (!agentId) {
       return NextResponse.json({ error: 'agentId is required' }, { status: 400 });
+    }
+
+    if (agentId === session.id) {
+      return NextResponse.json({ error: 'You cannot change your own role or status.' }, { status: 400 });
+    }
+
+    const target = await query(`SELECT role FROM users WHERE id = $1`, [agentId]);
+    if (target.length === 0) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+    if (session.role !== 'super_admin' && (role === 'super_admin' || target[0].role === 'super_admin')) {
+      return NextResponse.json({ error: 'Only a Super Admin can manage Super Admins.' }, { status: 403 });
     }
 
     const updates = [];

@@ -11,7 +11,7 @@ import AIResultsPanel from '@/components/AIResultsPanel';
 import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
 import styles from './agent.module.css';
 
-const CURRENT_APP_VERSION = '2026-09-24-v2';
+const CURRENT_APP_VERSION = '2026-10-05-v1';
 
 export default function AgentDashboard() {
   const { profile } = useAuth();

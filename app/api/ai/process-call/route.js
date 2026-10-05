@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { parseNextSteps, allValidValues, normaliseSelections } from '@/lib/nextSteps';
 import { QA_THRESHOLDS, FLAG_TYPES } from '@/lib/constants';
 
 /**
@@ -175,8 +176,8 @@ Analyze the following call transcript between a Call Agent and an Attendee who a
 ## Campaign Script (what the agent should follow):
 ${scriptTemplate || 'No script provided'}
 
-## Available Next Steps Options:
-${(nextStepsOptions || []).map((s, i) => `${i + 1}. ${s}`).join('\n')}
+## Available Next Steps Options (return values EXACTLY as written; for questions pick at most ONE answer per question):
+${allValidValues(parseNextSteps(nextStepsOptions)).map((s, i) => `${i + 1}. ${s}`).join('\n')}
 
 ## Call Transcript:
 ${transcript || 'No transcript available'}
@@ -234,7 +235,7 @@ Respond in the following JSON format only (no markdown, no code blocks):
     const parsed = JSON.parse(text);
     return {
       summary: parsed.summary || '',
-      nextSteps: parsed.nextSteps || [],
+      nextSteps: normaliseSelections(parsed.nextSteps || [], parseNextSteps(nextStepsOptions)),
       testimony: parsed.testimony || '',
       scriptAdherence: parsed.scriptAdherence || 0,
       scriptAdherenceDetails: parsed.scriptAdherenceDetails || {},

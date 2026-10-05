@@ -1,12 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import styles from './AIResultsPanel.module.css';
+import { parseNextSteps, answerValue, splitValue, normaliseSelections } from '@/lib/nextSteps';
+
+/** Outcomes the volunteer can record. `connected` controls whether questions are shown. */
+const OUTCOMES = [
+  { value: 'completed', icon: '✅', label: 'Spoke with them', connected: true },
+  { value: 'callback_requested', icon: '⏰', label: 'Call back later', connected: true },
+  { value: 'no_answer', icon: '📵', label: 'No answer', connected: false },
+  { value: 'busy', icon: '🔄', label: 'Line busy', connected: false },
+  { value: 'wrong_number', icon: '❌', label: 'Wrong number', connected: false },
+];
 
 /**
- * AIResultsPanel — displays AI-extracted data for agent review and confirmation.
- * Shows: Next Steps checkboxes, testimony summary, transcript preview,
- * with graceful fallback to manual entry if AI processing is skipped or fails.
+ * AIResultsPanel — the post-call "Outcome & Notes" screen.
+ *
+ * Flow (top → bottom, matching how a volunteer thinks after hanging up):
+ *   1. What happened on the call? (outcome)
+ *   2. Answers to the campaign questions (only if they actually spoke)
+ *   3. Notes / testimony
+ *   4. Save & next
+ *
+ * Campaign next steps are parsed into question groups (see lib/nextSteps.js)
+ * so answers like "Yes" under different questions are tracked independently.
  */
 export default function AIResultsPanel({
   qaResults,
@@ -17,34 +34,79 @@ export default function AIResultsPanel({
   onSkipAI,
   error,
 }) {
-  const [selectedNextSteps, setSelectedNextSteps] = useState([]);
+  const groups = useMemo(() => parseNextSteps(nextStepsOptions), [nextStepsOptions]);
+
+  // answers: { [questionLabel]: answer } ; actions: Set of standalone action labels
+  const [answers, setAnswers] = useState({});
+  const [actions, setActions] = useState([]);
   const [testimony, setTestimony] = useState('');
   const [disposition, setDisposition] = useState('completed');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   // Pre-fill from AI results when they arrive
   useEffect(() => {
-    if (qaResults) {
-      setSelectedNextSteps(qaResults.next_steps_extracted || []);
-      setTestimony(qaResults.testimony_extracted || '');
-    }
-  }, [qaResults]);
+    if (!qaResults) return;
+    const selected = normaliseSelections(qaResults.next_steps_extracted || [], groups);
+    const nextAnswers = {};
+    const nextActions = [];
+    selected.forEach(v => {
+      const { question, answer } = splitValue(v);
+      if (question) nextAnswers[question] = answer;
+      else nextActions.push(answer);
+    });
+    setAnswers(nextAnswers);
+    setActions(nextActions);
+    setTestimony(qaResults.testimony_extracted || '');
+  }, [qaResults, groups]);
 
-  /** Toggle a next step checkbox */
-  const toggleNextStep = (step) => {
-    setSelectedNextSteps(prev =>
-      prev.includes(step)
-        ? prev.filter(s => s !== step)
-        : [...prev, step]
-    );
+  const aiSelected = useMemo(
+    () => new Set(qaResults ? normaliseSelections(qaResults.next_steps_extracted || [], groups) : []),
+    [qaResults, groups]
+  );
+
+  const outcome = OUTCOMES.find(o => o.value === disposition) || OUTCOMES[0];
+  const questionGroups = groups.filter(g => g.type === 'question');
+  const actionGroups = groups.filter(g => g.type === 'action');
+  const answeredCount = questionGroups.filter(g => answers[g.label]).length;
+
+  /** Select an answer for a question; tapping the selected answer clears it. */
+  const pickAnswer = (question, answer) => {
+    setAnswers(prev => {
+      const next = { ...prev };
+      if (next[question] === answer) delete next[question];
+      else next[question] = answer;
+      return next;
+    });
   };
 
-  /** Submit confirmed data */
-  const handleConfirm = () => {
-    onConfirm({
-      nextSteps: selectedNextSteps,
-      testimony: testimony.trim(),
-      disposition,
-    });
+  const toggleAction = (label) => {
+    setActions(prev => (prev.includes(label) ? prev.filter(a => a !== label) : [...prev, label]));
+  };
+
+  /** Submit confirmed data (guarded against double taps). */
+  const handleConfirm = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const nextSteps = outcome.connected
+        ? [
+            ...actions,
+            ...questionGroups
+              .filter(g => answers[g.label])
+              .map(g => answerValue(g.label, answers[g.label])),
+          ]
+        : [];
+      await onConfirm({
+        nextSteps,
+        testimony: testimony.trim(),
+        disposition,
+      });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   // Loading state — AI is processing
@@ -82,15 +144,10 @@ export default function AIResultsPanel({
             </div>
           </div>
 
-          <div style={{ marginTop: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', width: '100%', maxWidth: 360 }}>
+          <div className={styles.processingActions}>
             {onSkipAI && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={onSkipAI}
-                style={{ width: '100%' }}
-              >
-                ✍️ Skip AI & Enter Notes Manually
+              <button type="button" className="btn btn-secondary" onClick={onSkipAI} style={{ width: '100%' }}>
+                ✍️ Skip AI &amp; Enter Notes Manually
               </button>
             )}
             {onCancel && (
@@ -100,7 +157,7 @@ export default function AIResultsPanel({
                 onClick={onCancel}
                 style={{ width: '100%', color: 'var(--text-secondary)' }}
               >
-                ← Cancel & Return to Call
+                ← Cancel &amp; Return to Call
               </button>
             )}
           </div>
@@ -109,31 +166,18 @@ export default function AIResultsPanel({
     );
   }
 
-  // Results ready OR manual review fallback
   return (
     <div className={styles.container}>
       {error && !qaResults ? (
-        <div style={{
-          background: 'rgba(239, 68, 68, 0.12)',
-          border: '1px solid rgba(239, 68, 68, 0.3)',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-4)',
-          marginBottom: 'var(--space-4)',
-          color: '#f87171',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontWeight: 600 }}>
-            <span>⚠️</span>
-            <span>Manual Entry Mode</span>
-          </div>
-          <p style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)', color: 'var(--text-secondary)' }}>
-            {error} — You can log attendee next steps and notes manually below.
-          </p>
+        <div className={styles.errorBanner} role="alert">
+          <strong>⚠️ Manual Entry Mode</strong>
+          <p>{error} — you can record the outcome and notes manually below.</p>
         </div>
       ) : (
         <div className={styles.header}>
-          <h2 className={styles.title}>🤖 {qaResults ? 'AI Analysis Complete' : 'Call Follow-up'}</h2>
+          <h2 className={styles.title}>{qaResults ? '🤖 AI Analysis Complete' : 'How did the call go?'}</h2>
           {qaResults?.script_adherence_score != null && (
-            <span className={`badge ${qaResults.script_adherence_score >= 80 ? 'badge-success' : 
+            <span className={`badge ${qaResults.script_adherence_score >= 80 ? 'badge-success' :
               qaResults.script_adherence_score >= 50 ? 'badge-warning' : 'badge-danger'}`}>
               Script: {qaResults.script_adherence_score.toFixed(0)}%
             </span>
@@ -141,13 +185,6 @@ export default function AIResultsPanel({
         </div>
       )}
 
-      <p className={styles.subtitle}>
-        {qaResults
-          ? "Review the AI's findings below. Adjust anything that looks incorrect, then confirm."
-          : "Select agreed next steps and enter any testimony or notes from the conversation."}
-      </p>
-
-      {/* Transcript Summary */}
       {qaResults?.transcript_summary && (
         <div className={`${styles.section} animate-fade-in-up`}>
           <h3 className={styles.sectionTitle}>📝 Call Summary</h3>
@@ -155,75 +192,136 @@ export default function AIResultsPanel({
         </div>
       )}
 
-      {/* Next Steps */}
-      <div className={`${styles.section} animate-fade-in-up`} style={{ animationDelay: '0.1s' }}>
-        <h3 className={styles.sectionTitle}>
-          ✅ Next Steps
-          {qaResults && <span className={styles.aiLabel}>AI-detected</span>}
+      {/* 1. Outcome */}
+      <section className={`${styles.section} animate-fade-in-up`} aria-labelledby="outcome-title">
+        <h3 id="outcome-title" className={styles.sectionTitle}>
+          <span className={styles.stepNum}>1</span> Call outcome
         </h3>
-        <div className={styles.checkboxList}>
-          {(nextStepsOptions || []).map((step) => (
-            <label key={step} className="checkbox-group">
-              <input
-                type="checkbox"
-                checked={selectedNextSteps.includes(step)}
-                onChange={() => toggleNextStep(step)}
-              />
-              <span className={styles.checkboxLabel}>{step}</span>
-              {(qaResults?.next_steps_extracted || []).includes(step) && (
-                <span className={styles.aiTag}>🤖 AI</span>
-              )}
-            </label>
+        <div className={styles.outcomeGrid} role="radiogroup" aria-labelledby="outcome-title">
+          {OUTCOMES.map(o => (
+            <button
+              key={o.value}
+              id={`outcome-${o.value}`}
+              type="button"
+              role="radio"
+              aria-checked={disposition === o.value}
+              className={`${styles.outcomeChip} ${disposition === o.value ? styles.outcomeChipActive : ''} ${!o.connected ? styles.outcomeChipMuted : ''}`}
+              onClick={() => setDisposition(o.value)}
+            >
+              <span className={styles.outcomeIcon} aria-hidden="true">{o.icon}</span>
+              <span>{o.label}</span>
+            </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Testimony / Call Notes */}
-      <div className={`${styles.section} animate-fade-in-up`} style={{ animationDelay: '0.2s' }}>
-        <h3 className={styles.sectionTitle}>
-          🙏 Testimony & Notes
+      {/* 2. Questions & next steps — only when they actually spoke */}
+      {outcome.connected && groups.length > 0 && (
+        <section className={`${styles.section} animate-fade-in-up`} aria-labelledby="answers-title">
+          <h3 id="answers-title" className={styles.sectionTitle}>
+            <span className={styles.stepNum}>2</span> Their responses
+            {questionGroups.length > 0 && (
+              <span className={styles.progressPill}>
+                {answeredCount}/{questionGroups.length} answered
+              </span>
+            )}
+            {qaResults && <span className={styles.aiLabel}>AI pre-filled</span>}
+          </h3>
+
+          <div className={styles.questionList}>
+            {questionGroups.map((g, gi) => (
+              <div key={g.id} className={styles.questionCard} role="radiogroup" aria-labelledby={`${g.id}-label`}>
+                <p id={`${g.id}-label`} className={styles.questionLabel}>
+                  <span className={styles.questionIndex}>Q{gi + 1}</span>
+                  {g.label}
+                </p>
+                <div className={styles.answerRow}>
+                  {g.options.map(opt => {
+                    const selected = answers[g.label] === opt;
+                    const fromAI = aiSelected.has(answerValue(g.label, opt));
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        id={`${g.id}-${opt.replace(/\W+/g, '-').toLowerCase()}`}
+                        className={`${styles.answerChip} ${selected ? styles.answerChipActive : ''}`}
+                        onClick={() => pickAnswer(g.label, opt)}
+                      >
+                        {selected && <span aria-hidden="true">✓ </span>}
+                        {opt}
+                        {fromAI && <span className={styles.aiTag}>AI</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {actionGroups.length > 0 && (
+              <div className={styles.questionCard}>
+                <p className={styles.questionLabel}>Agreed next steps <span className={styles.hint}>(tap all that apply)</span></p>
+                <div className={styles.answerRow}>
+                  {actionGroups.map(g => {
+                    const selected = actions.includes(g.label);
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        aria-pressed={selected}
+                        className={`${styles.answerChip} ${selected ? styles.answerChipActive : ''}`}
+                        onClick={() => toggleAction(g.label)}
+                      >
+                        {selected && <span aria-hidden="true">✓ </span>}
+                        {g.label}
+                        {aiSelected.has(g.label) && <span className={styles.aiTag}>AI</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* 3. Notes */}
+      <section className={`${styles.section} animate-fade-in-up`} aria-labelledby="notes-title">
+        <h3 id="notes-title" className={styles.sectionTitle}>
+          <span className={styles.stepNum}>{outcome.connected && groups.length > 0 ? 3 : 2}</span>
+          {outcome.connected ? 'Testimony & notes' : 'Notes (optional)'}
           {qaResults && <span className={styles.aiLabel}>AI-extracted</span>}
         </h3>
         <textarea
+          id="call-notes"
           className="form-textarea"
           value={testimony}
           onChange={(e) => setTestimony(e.target.value)}
-          placeholder="Enter any testimony, feedback, or follow-up notes from the call..."
-          rows={4}
+          placeholder={outcome.connected
+            ? 'Prayer requests, testimony, best time to call back, anything the team should know…'
+            : 'e.g. Voicemail full, number disconnected…'}
+          rows={outcome.connected ? 4 : 2}
         />
-      </div>
+      </section>
 
-      {/* Call Disposition */}
-      <div className={`${styles.section} animate-fade-in-up`} style={{ animationDelay: '0.25s' }}>
-        <h3 className={styles.sectionTitle}>📞 Call Outcome</h3>
-        <select
-          className="form-select"
-          value={disposition}
-          onChange={(e) => setDisposition(e.target.value)}
-          style={{ width: '100%', padding: 'var(--space-3)', background: 'var(--surface-overlay)' }}
-        >
-          <option value="completed">✅ Call Completed / Connected</option>
-          <option value="no_answer">📵 No Answer</option>
-          <option value="busy">🔄 Line Busy</option>
-          <option value="wrong_number">❌ Wrong Number</option>
-          <option value="callback_requested">⏰ Callback Requested</option>
-        </select>
-      </div>
-
-      {/* Confirm & Cancel Buttons */}
-      <div className={styles.confirmSection} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+      {/* Save */}
+      <div className={styles.confirmSection}>
         <button
+          id="save-outcome"
           className="btn btn-primary btn-lg"
           onClick={handleConfirm}
+          disabled={saving}
           style={{ width: '100%' }}
         >
-          💾 Save Outcome & Next Attendee
+          {saving ? 'Saving…' : `💾 Save “${outcome.label}” & Next Attendee`}
         </button>
         {onCancel && (
           <button
             type="button"
             className="btn btn-ghost"
             onClick={onCancel}
+            disabled={saving}
             style={{ width: '100%', color: 'var(--text-secondary)' }}
           >
             ← Return to Dialer

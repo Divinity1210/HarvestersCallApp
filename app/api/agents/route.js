@@ -10,7 +10,9 @@ export async function GET() {
     const rows = await query(
       `SELECT 
         u.id, u.email, u.full_name, u.role, u.is_active, u.created_at,
-        COUNT(c.id)::int as "callCount"
+        u.must_change_password, u.last_login_at,
+        COUNT(c.id)::int as "callCount",
+        MAX(c.created_at) as "lastCallAt"
        FROM users u
        LEFT JOIN calls c ON c.agent_id = u.id
        GROUP BY u.id

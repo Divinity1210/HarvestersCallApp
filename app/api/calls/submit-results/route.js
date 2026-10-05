@@ -14,8 +14,12 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Call ID required' }, { status: 400 });
     }
 
-    // Update the call record
-    const callStatus = noAnswer ? (agentDisposition === 'busy' ? 'busy' : 'no-answer') : 'completed';
+    // Update the call record. Derive the technical call status from the
+    // agent's chosen outcome so "No answer" / "Busy" / "Wrong number" picked
+    // on the outcome screen are not counted as connected calls.
+    const NOT_CONNECTED = { busy: 'busy', no_answer: 'no-answer', wrong_number: 'failed' };
+    const callStatus = NOT_CONNECTED[agentDisposition]
+      || (noAnswer ? 'no-answer' : 'completed');
     await query(
       `UPDATE calls 
        SET 

@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS leads (
   phone_number TEXT NOT NULL,
   phone_hash TEXT NOT NULL,
   metadata JSONB DEFAULT '{}',
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'locked', 'called', 'completed', 'no_answer', 'failed')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'locked', 'called', 'completed', 'no_answer', 'failed', 'unreached', 'busy', 'wrong_number', 'callback_requested')),
   locked_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   locked_at TIMESTAMPTZ,
   call_attempts INT DEFAULT 0,

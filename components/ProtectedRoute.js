@@ -24,6 +24,12 @@ export default function ProtectedRoute({ children, requiredRole = 'any' }) {
     // No profile yet → wait (trigger may still be running)
     if (!profile) return;
 
+    // Temporary password → must set their own first (handled on the login page)
+    if (profile.must_change_password) {
+      window.location.replace('/');
+      return;
+    }
+
     // Role check
     if (requiredRole === 'admin' && !isAdmin) {
       window.location.replace('/agent');

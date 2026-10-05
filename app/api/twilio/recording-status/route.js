@@ -45,7 +45,10 @@ export async function POST(request) {
       const baseUrl = new URL(request.url);
       fetch(`${baseUrl.protocol}//${baseUrl.host}/api/ai/process-call`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-secret': process.env.INTERNAL_API_SECRET || process.env.JWT_SECRET || 'harvesters-internal',
+        },
         body: JSON.stringify({
           callId: callData.id,
           recordingUrl: `${recordingUrl}.mp3`,

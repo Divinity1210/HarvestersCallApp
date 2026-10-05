@@ -74,6 +74,29 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  /**
+   * Session-expiry watcher: wraps fetch once so any API call rejected by the
+   * proxy (header x-auth-required) signs the user out cleanly instead of
+   * surfacing confusing errors mid-shift.
+   */
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.__harvestersFetchWrapped) return;
+    window.__harvestersFetchWrapped = true;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (...args) => {
+      const res = await originalFetch(...args);
+      if (res.status === 401 && res.headers.get('x-auth-required')) {
+        const url = String(args[0]?.url || args[0] || '');
+        if (!url.includes('/api/auth/me')) {
+          try { sessionStorage.setItem('harvesters_session_expired', '1'); } catch {}
+          setUser(null);
+          setProfile(null);
+        }
+      }
+      return res;
+    };
+  }, []);
+
   /** Sign in with email and password */
   const signIn = async (email, password) => {
     setError(null);
@@ -136,6 +159,7 @@ export function AuthProvider({ children }) {
     isAgent,
     isSuperAdmin,
     fetchProfile,
+    setProfile,
   };
 
   return (
