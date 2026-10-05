@@ -63,7 +63,7 @@ async function runMigration() {
       phone_number TEXT NOT NULL,
       phone_hash TEXT NOT NULL,
       metadata JSONB DEFAULT '{}',
-      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'locked', 'called', 'completed', 'no_answer', 'failed')),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'locked', 'called', 'completed', 'no_answer', 'failed', 'unreached', 'busy', 'wrong_number', 'callback_requested')),
       locked_by UUID REFERENCES users(id) ON DELETE SET NULL,
       locked_at TIMESTAMPTZ,
       call_attempts INT DEFAULT 0,
@@ -73,6 +73,12 @@ async function runMigration() {
       UNIQUE(campaign_id, phone_hash)
     )
   `;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS row_index INT`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS locked_device TEXT`;
+  // Second-pass support: which calling round this contact is on, and what
+  // happened last time (shown to the volunteer on retry rounds).
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS retry_round INT NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_outcome TEXT`;
 
   // 5. Calls Table
   await sql`

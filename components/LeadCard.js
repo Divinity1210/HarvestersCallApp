@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import styles from './LeadCard.module.css';
+import { outcomeLabel, roundLabel } from '@/lib/leadOutcomes';
 
 /**
  * LeadCard — Displays current attendee info (without phone number).
@@ -67,9 +68,11 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <span className={styles.sectionTitle}>Attendee</span>
-          <span className={styles.attemptBadge}>
-            Attempt {lead.call_attempts || 1}/{lead.max_attempts || 3}
-          </span>
+          {lead.retry_round > 0 && (
+            <span className={styles.attemptBadge} title="This contact has been tried before">
+              {roundLabel(lead.retry_round)} try
+            </span>
+          )}
         </div>
         <span className={`badge ${
           phase === 'calling' ? 'badge-success' :
@@ -90,7 +93,7 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
         <div className={styles.identityMeta}>
           <h2 className={styles.attendeeName}>
             {lead.full_name}
-            {lead.call_attempts > 1 && (
+            {lead.retry_round > 0 && (
               <span className={styles.retryTag}>
                 RETRY
               </span>
@@ -122,6 +125,16 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
           )}
         </div>
       </div>
+
+      {lead.retry_round > 0 && lead.last_outcome && (
+        <div className={styles.lastTimeHint} role="note">
+          <span aria-hidden="true">↩︎</span>
+          <span>
+            <strong>Last time:</strong> {outcomeLabel(lead.last_outcome)}
+            {lead.last_outcome === 'callback_requested' && ' — they asked us to call again, so open warmly.'}
+          </span>
+        </div>
+      )}
 
       {/* Metadata Section (Collapsible on mobile) */}
       {hasMetadata && (

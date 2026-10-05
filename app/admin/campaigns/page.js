@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { DEFAULT_NEXT_STEPS } from '@/lib/constants';
 import NextStepsEditor from '@/components/NextStepsEditor';
+import CampaignProgress from '@/components/CampaignProgress';
+import { RETRYABLE_STATUSES, DEFAULT_REQUEUE, outcomeLabel } from '@/lib/leadOutcomes';
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState([]);
@@ -17,6 +19,11 @@ export default function CampaignsPage() {
   const [sheetsName, setSheetsName] = useState('Sheet1');
   const [isImporting, setIsImporting] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteTyped, setDeleteTyped] = useState('');
+  const [requeueFor, setRequeueFor] = useState(null); // campaign object
+  const [requeueSel, setRequeueSel] = useState(DEFAULT_REQUEUE);
+  const [requeueBusy, setRequeueBusy] = useState(false);
+  const [requeueMsg, setRequeueMsg] = useState('');
   const fileInputRef = useRef(null);
 
   // Form state
@@ -149,10 +156,43 @@ export default function CampaignsPage() {
   /** Delete campaign */
   const handleDelete = async (campaignId) => {
     const res = await fetch(`/api/campaigns/${campaignId}`, { method: 'DELETE' });
-    const data = await res.json();
     if (res.ok) {
       setDeleteConfirm(null);
+      setDeleteTyped('');
       fetchCampaigns();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'Could not delete campaign.');
+    }
+  };
+
+  /** Second pass: send unreached contacts back into the queue */
+  const openRequeue = (campaign) => {
+    const by = campaignStats[campaign.id]?.byStatus || {};
+    setRequeueSel(DEFAULT_REQUEUE.filter(s => (by[s] || 0) > 0));
+    setRequeueMsg('');
+    setRequeueFor(campaign);
+  };
+
+  const handleRequeue = async () => {
+    if (!requeueFor || requeueSel.length === 0) return;
+    setRequeueBusy(true);
+    setRequeueMsg('');
+    try {
+      const res = await fetch(`/api/campaigns/${requeueFor.id}/requeue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ statuses: requeueSel }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not re-queue contacts');
+      setRequeueMsg(`✅ ${data.requeued.toLocaleString()} contacts are back in the queue. Volunteers will get them next.`);
+      fetchCampaigns();
+      setTimeout(() => setRequeueFor(null), 2200);
+    } catch (err) {
+      setRequeueMsg(`⚠️ ${err.message}`);
+    } finally {
+      setRequeueBusy(false);
     }
   };
 
@@ -286,25 +326,7 @@ export default function CampaignsPage() {
                 </div>
               </div>
 
-              {/* Progress Bar */}
-              {campaignStats[campaign.id] && campaignStats[campaign.id].total > 0 && (
-                <div style={{ marginTop: 'var(--space-3)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', marginBottom: 'var(--space-1)' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Progress</span>
-                    <span style={{ color: 'var(--text-secondary)' }}>
-                      {campaignStats[campaign.id].completed} / {campaignStats[campaign.id].total} leads
-                      {campaignStats[campaign.id].failed > 0 && (
-                        <span style={{ color: 'var(--color-danger)', marginLeft: 'var(--space-2)' }}>
-                          ({campaignStats[campaign.id].failed} unreachable)
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="progress-bar">
-                    <div className="progress-bar-fill" style={{ width: `${campaignStats[campaign.id].percent}%` }}></div>
-                  </div>
-                </div>
-              )}
+              <CampaignProgress stats={campaignStats[campaign.id]} />
 
               <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-4)', borderTop: '1px solid var(--border-subtle)', paddingTop: 'var(--space-3)', flexWrap: 'wrap' }}>
                 <button
@@ -319,6 +341,19 @@ export default function CampaignsPage() {
                 >
                   ✏️ Edit
                 </button>
+                {(() => {
+                  const by = campaignStats[campaign.id]?.byStatus || {};
+                  const retryable = RETRYABLE_STATUSES.reduce((n, s) => n + (by[s] || 0), 0);
+                  return retryable > 0 ? (
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => openRequeue(campaign)}
+                      title="Send contacts who weren't reached back into the queue"
+                    >
+                      🔁 Call again ({retryable.toLocaleString()})
+                    </button>
+                  ) : null;
+                })()}
                 {campaign.status === 'active' && (
                   <button
                     className="btn btn-ghost btn-sm"
@@ -834,29 +869,102 @@ export default function CampaignsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation */}
-      {deleteConfirm && (
-        <div className="modal-overlay" onClick={() => setDeleteConfirm(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
-            <div className="modal-header">
-              <h2 className="modal-title">🗑️ Delete Campaign</h2>
-              <button className="btn btn-ghost btn-sm" onClick={() => setDeleteConfirm(null)}>✕</button>
-            </div>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)' }}>
-              Are you sure you want to delete <strong>{deleteConfirm.name}</strong>?
-              {campaignStats[deleteConfirm.id]?.total > 0 && (
-                <span style={{ display: 'block', marginTop: 'var(--space-2)', color: 'var(--color-warning)' }}>
-                  This campaign has {campaignStats[deleteConfirm.id]?.total} leads. It will be archived instead of permanently deleted.
-                </span>
+      {/* Second pass (re-queue) */}
+      {requeueFor && (() => {
+        const by = campaignStats[requeueFor.id]?.byStatus || {};
+        const options = RETRYABLE_STATUSES.filter(s => (by[s] || 0) > 0);
+        const selectedCount = requeueSel.reduce((n, s) => n + (by[s] || 0), 0);
+        return (
+          <div className="modal-overlay" onClick={() => !requeueBusy && setRequeueFor(null)}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }} role="dialog" aria-labelledby="requeue-title">
+              <div className="modal-header">
+                <h2 className="modal-title" id="requeue-title">🔁 Call again</h2>
+                <button className="btn btn-ghost btn-sm" onClick={() => setRequeueFor(null)} disabled={requeueBusy} aria-label="Close">✕</button>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)', lineHeight: 1.5 }}>
+                Put contacts from <strong>{requeueFor.name}</strong> back in the queue for another try.
+                Volunteers will see it&apos;s a retry and what happened last time. Nobody on a call right now is affected.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginBottom: 'var(--space-4)' }}>
+                {options.map(s => (
+                  <label
+                    key={s}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
+                      padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                      border: requeueSel.includes(s) ? '1px solid var(--border-strong)' : '1px solid var(--border-input)',
+                      background: requeueSel.includes(s) ? 'var(--color-accent-glow)' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={requeueSel.includes(s)}
+                      onChange={e => setRequeueSel(prev => e.target.checked ? [...prev, s] : prev.filter(x => x !== s))}
+                    />
+                    <span style={{ flex: 1 }}>{outcomeLabel(s)}</span>
+                    <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{(by[s] || 0).toLocaleString()}</strong>
+                  </label>
+                ))}
+              </div>
+              {requeueMsg && (
+                <p role="status" style={{ fontSize: 'var(--text-sm)', marginBottom: 'var(--space-3)' }}>{requeueMsg}</p>
               )}
-            </p>
-            <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
-              <button className="btn btn-ghost" onClick={() => setDeleteConfirm(null)}>Cancel</button>
-              <button className="btn btn-danger" onClick={() => handleDelete(deleteConfirm.id)}>Delete</button>
+              <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={() => setRequeueFor(null)} disabled={requeueBusy}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleRequeue} disabled={requeueBusy || selectedCount === 0}>
+                  {requeueBusy ? 'Re-queuing…' : `Re-queue ${selectedCount.toLocaleString()} contacts`}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* Delete Confirmation */}
+      {deleteConfirm && (() => {
+        const total = campaignStats[deleteConfirm.id]?.total || 0;
+        const needsTyping = total > 0;
+        const canDelete = !needsTyping || deleteTyped.trim() === deleteConfirm.name.trim();
+        const close = () => { setDeleteConfirm(null); setDeleteTyped(''); };
+        return (
+          <div className="modal-overlay" onClick={close}>
+            <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }} role="alertdialog" aria-labelledby="delete-title">
+              <div className="modal-header">
+                <h2 className="modal-title" id="delete-title">🗑️ Delete campaign</h2>
+                <button className="btn btn-ghost btn-sm" onClick={close} aria-label="Close">✕</button>
+              </div>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--space-4)', lineHeight: 1.5 }}>
+                Delete <strong>{deleteConfirm.name}</strong>?
+                {needsTyping && (
+                  <span style={{ display: 'block', marginTop: 'var(--space-2)', color: 'var(--color-danger)' }}>
+                    This permanently removes all {total.toLocaleString()} contacts in it and can&apos;t be undone.
+                    If calling is finished, use <strong>✅ Complete</strong> instead to keep the records.
+                  </span>
+                )}
+              </p>
+              {needsTyping && (
+                <div className="form-group" style={{ marginBottom: 'var(--space-4)' }}>
+                  <label className="form-label" htmlFor="delete-confirm-input">Type the campaign name to confirm</label>
+                  <input
+                    id="delete-confirm-input"
+                    className="form-input"
+                    value={deleteTyped}
+                    onChange={e => setDeleteTyped(e.target.value)}
+                    placeholder={deleteConfirm.name}
+                    autoComplete="off"
+                  />
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 'var(--space-3)', justifyContent: 'flex-end' }}>
+                <button className="btn btn-ghost" onClick={close}>Cancel</button>
+                <button className="btn btn-danger" onClick={() => handleDelete(deleteConfirm.id)} disabled={!canDelete}>
+                  Delete permanently
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

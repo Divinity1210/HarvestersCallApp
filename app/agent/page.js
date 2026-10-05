@@ -11,7 +11,7 @@ import AIResultsPanel from '@/components/AIResultsPanel';
 import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
 import styles from './agent.module.css';
 
-const CURRENT_APP_VERSION = '2026-10-05-v1';
+const CURRENT_APP_VERSION = '2026-10-05-v2';
 
 export default function AgentDashboard() {
   const { profile } = useAuth();
@@ -76,6 +76,22 @@ export default function AgentDashboard() {
     };
 
     fetchCampaigns();
+
+    // Light refresh so the "Left" counter (and any script edits by admins)
+    // stay current. Keeps the volunteer's selection and current contact.
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/campaigns');
+        if (!res.ok) return;
+        const data = await res.json();
+        const active = (data?.campaigns || []).filter(c => c.status === 'active');
+        if (active.length === 0) return;
+        setCampaigns(active);
+        setSelectedCampaign(prev => (prev && active.find(c => c.id === prev.id)) || prev);
+      } catch { /* offline; try again next tick */ }
+    };
+    const interval = setInterval(refresh, 60000);
+    return () => clearInterval(interval);
   }, []);
 
   // Fetch agent stats
@@ -289,6 +305,12 @@ export default function AgentDashboard() {
           )}
         </div>
         <div className={styles.statsRight}>
+          {typeof selectedCampaign?.stats?.remaining === 'number' && (
+            <div className={styles.statChip} title="Contacts in this campaign nobody has called yet">
+              <span className={styles.statChipLabel}>Left</span>
+              <span className={styles.statChipValue}>{selectedCampaign.stats.remaining.toLocaleString()}</span>
+            </div>
+          )}
           <div className={styles.statChip}>
             <span className={styles.statChipLabel}>Today</span>
             <span className={styles.statChipValue}>{agentStats.callsToday}</span>

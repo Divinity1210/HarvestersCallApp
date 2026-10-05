@@ -58,6 +58,7 @@ export async function POST(request) {
     if (cleanDeviceId) {
       const existingLocked = await query(
         `SELECT l.id, l.full_name, l.phone_number, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id,
+                l.retry_round, l.last_outcome,
                 c.id as call_id
          FROM leads l
          LEFT JOIN calls c ON c.lead_id = l.id
@@ -92,6 +93,8 @@ export async function POST(request) {
             call_attempts: l.call_attempts,
             max_attempts: l.max_attempts,
             campaign_id: l.campaign_id,
+            retry_round: l.retry_round || 0,
+            last_outcome: l.last_outcome || null,
           },
           call: { id: callId },
           resumed: true,
@@ -151,7 +154,7 @@ export async function POST(request) {
           updated_at = now()
         FROM candidate
         WHERE upd.id = candidate.id
-        RETURNING upd.id, upd.full_name, upd.phone_number, upd.metadata, upd.row_index, upd.call_attempts, upd.max_attempts, upd.campaign_id;
+        RETURNING upd.id, upd.full_name, upd.phone_number, upd.metadata, upd.row_index, upd.call_attempts, upd.max_attempts, upd.campaign_id, upd.retry_round, upd.last_outcome;
       `;
 
       let lockedRows = await query(gapLockQuery, [campaignId, userId, cleanDeviceId]);
@@ -192,7 +195,7 @@ export async function POST(request) {
             updated_at = now()
           FROM candidate
           WHERE l.id = candidate.id
-          RETURNING l.id, l.full_name, l.phone_number, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id;
+          RETURNING l.id, l.full_name, l.phone_number, l.metadata, l.row_index, l.call_attempts, l.max_attempts, l.campaign_id, l.retry_round, l.last_outcome;
         `;
 
         lockedRows = await query(fallbackLockQuery, [campaignId, userId, cleanDeviceId]);
