@@ -16,11 +16,13 @@ export default function Navbar() {
       <nav className={styles.navbar}>
         <div className={styles.navLeft}>
           <div className={styles.logo}>
-            <img 
-              src="/harvesters-logo.svg" 
-              alt="Harvesters" 
-              style={{ width: 120, height: 'auto', filter: 'brightness(1.1)' }}
-            />
+            <a href="/agent" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none' }}>
+              <img 
+                src="/harvesters-logo.png" 
+                alt="Harvesters International Christian Centre" 
+                style={{ height: 36, width: 'auto', display: 'block' }}
+              />
+            </a>
           </div>
         </div>
 

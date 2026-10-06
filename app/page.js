@@ -121,10 +121,10 @@ export default function LoginPage() {
         {/* Logo & Branding */}
         <div className={styles.logoSection}>
           <img
-            src="/harvesters-logo.svg"
+            src="/harvesters-logo.png"
             alt="Harvesters International Christian Centre"
             className={styles.logoImage}
-            style={{ width: 180, height: 'auto', marginBottom: 'var(--space-4)' }}
+            style={{ width: 220, height: 'auto', marginBottom: 'var(--space-4)', display: 'inline-block' }}
           />
           <h1 className={styles.appName}>{APP_NAME}</h1>
           <p className={styles.appSubtitle}>AI-Powered Follow-Up Call System</p>
