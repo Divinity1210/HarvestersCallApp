@@ -45,6 +45,14 @@ export default function CallDialer({
     waNumber = '44' + waNumber.slice(1);
   }
 
+  // Format SMS phone number
+  let smsPhone = (phoneNumber || '').replace(/[^0-9+]/g, '');
+  if (smsPhone.startsWith('0') && smsPhone.length === 11) {
+    smsPhone = '+44' + smsPhone.slice(1);
+  } else if (!smsPhone.startsWith('+') && smsPhone.startsWith('44')) {
+    smsPhone = '+' + smsPhone;
+  }
+
   // Twilio call state flags
   const isIdle = callState === 'idle';
   const isConnecting = callState === 'connecting';
@@ -142,27 +150,51 @@ export default function CallDialer({
                 <span>Call via Mobile (SIM / Cellular)</span>
               </a>
 
-              {waNumber && hasLead && (
-                <a
-                  href={`https://wa.me/${waNumber}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-secondary"
-                  onClick={onDeviceCallStarted}
-                  style={{
-                    textDecoration: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 'var(--space-2)',
-                    padding: 'var(--space-3)',
-                    fontSize: 'var(--text-sm)'
-                  }}
-                  aria-label="Open WhatsApp conversation"
-                >
-                  <span>💬</span>
-                  <span>Call / Chat on WhatsApp</span>
-                </a>
+              {hasLead && (
+                <div style={{ display: 'grid', gridTemplateColumns: waNumber ? '1fr 1fr' : '1fr', gap: 'var(--space-2)' }}>
+                  {waNumber && (
+                    <a
+                      href={`https://wa.me/${waNumber}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-secondary"
+                      onClick={onDeviceCallStarted}
+                      style={{
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 'var(--space-2)',
+                        padding: 'var(--space-3)',
+                        fontSize: 'var(--text-sm)'
+                      }}
+                      aria-label="Open WhatsApp conversation"
+                    >
+                      <span>💬</span>
+                      <span>WhatsApp</span>
+                    </a>
+                  )}
+                  <a
+                    href={`sms:${smsPhone || waNumber || (phoneNumber || '').replace(/[^0-9+]/g, '')}`}
+                    className="btn btn-secondary"
+                    onClick={onDeviceCallStarted}
+                    style={{
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-3)',
+                      fontSize: 'var(--text-sm)',
+                      borderColor: 'rgba(59, 130, 246, 0.4)',
+                      color: '#60a5fa'
+                    }}
+                    aria-label="Send SMS / Text message"
+                  >
+                    <span>✉️</span>
+                    <span>Send SMS</span>
+                  </a>
+                </div>
               )}
             </div>
           ) : (

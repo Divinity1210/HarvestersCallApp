@@ -11,7 +11,7 @@ import AIResultsPanel from '@/components/AIResultsPanel';
 import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
 import styles from './agent.module.css';
 
-const CURRENT_APP_VERSION = '2026-10-05-v3';
+const CURRENT_APP_VERSION = '2026-10-05-v4';
 
 export default function AgentDashboard() {
   const { profile } = useAuth();
@@ -35,27 +35,6 @@ export default function AgentDashboard() {
 
   const callMode = selectedCampaign?.call_mode || 'device';
 
-  // Auto-refresh mechanism: polls /api/app-version every 15s.
-  // If a new deployment occurs, automatically reloads the page!
-  useEffect(() => {
-    const checkVersion = async () => {
-      try {
-        const res = await fetch('/api/app-version?t=' + Date.now(), { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.version && data.version !== CURRENT_APP_VERSION) {
-            console.log(`[AutoUpdater] New deployment detected (${data.version} vs ${CURRENT_APP_VERSION}). Refreshing...`);
-            window.location.reload(true);
-          }
-        }
-      } catch (e) {
-        // silent
-      }
-    };
-
-    const interval = setInterval(checkVersion, 15000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Fetch active campaigns
   useEffect(() => {
@@ -100,12 +79,6 @@ export default function AgentDashboard() {
       if (!profile?.id) return;
       try {
         const res = await fetch('/api/agent/stats?period=today');
-        const data = await res.json();
-        if (data?.version && data.version !== CURRENT_APP_VERSION) {
-          console.log(`[AutoUpdater] New deployment detected via stats (${data.version}). Refreshing...`);
-          window.location.reload(true);
-          return;
-        }
         if (data?.stats) {
           setAgentStats({
             callsToday: data.stats.totalCalls || 0,
