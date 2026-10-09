@@ -32,6 +32,7 @@ export default function CallDialer({
   deviceCalling,
   deviceDuration,
   formattedDeviceDuration,
+  onOpenSMSModal,
 }) {
   // Auto-init the Twilio device ONLY when in twilio mode
   useEffect(() => {
@@ -178,12 +179,15 @@ export default function CallDialer({
                       <span>WhatsApp</span>
                     </a>
                   )}
-                  <a
-                    href={`sms:${smsPhone || waNumber || (phoneNumber || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(defaultMessage)}`}
+                  <button
+                    type="button"
                     className="btn btn-secondary"
-                    onClick={onDeviceCallStarted}
+                    onClick={() => {
+                      if (onOpenSMSModal) {
+                        onOpenSMSModal();
+                      }
+                    }}
                     style={{
-                      textDecoration: 'none',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -191,13 +195,15 @@ export default function CallDialer({
                       padding: 'var(--space-3)',
                       fontSize: 'var(--text-sm)',
                       borderColor: 'rgba(59, 130, 246, 0.4)',
-                      color: '#60a5fa'
+                      color: '#60a5fa',
+                      background: 'transparent',
+                      cursor: 'pointer'
                     }}
-                    aria-label="Send SMS / Text message"
+                    aria-label="Send SMS via Church Number"
                   >
                     <span>✉️</span>
                     <span>Send SMS</span>
-                  </a>
+                  </button>
                 </div>
               )}
             </div>
@@ -252,11 +258,15 @@ export default function CallDialer({
                         <span>WhatsApp</span>
                       </a>
                     )}
-                    <a
-                      href={`sms:${smsPhone || waNumber || (phoneNumber || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(defaultMessage)}`}
+                    <button
+                      type="button"
                       className="btn btn-secondary"
+                      onClick={() => {
+                        if (onOpenSMSModal) {
+                          onOpenSMSModal();
+                        }
+                      }}
                       style={{
-                        textDecoration: 'none',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -264,13 +274,15 @@ export default function CallDialer({
                         padding: 'var(--space-2)',
                         fontSize: 'var(--text-xs)',
                         borderColor: 'rgba(59, 130, 246, 0.4)',
-                        color: '#60a5fa'
+                        color: '#60a5fa',
+                        background: 'transparent',
+                        cursor: 'pointer'
                       }}
-                      aria-label="Send SMS / Text message"
+                      aria-label="Send SMS via Church Number"
                     >
                       <span>✉️</span>
                       <span>Send SMS</span>
-                    </a>
+                    </button>
                   </div>
                 )}
               </div>

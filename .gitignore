@@ -6,3 +6,5 @@ tmp-init/
 .DS_Store
 *.log
 .env*.local
+backups/
+*.csv

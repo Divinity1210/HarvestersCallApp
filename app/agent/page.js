@@ -9,6 +9,7 @@ import CallDialer, { CallActionBar } from '@/components/CallDialer';
 import LeadCard from '@/components/LeadCard';
 import AIResultsPanel from '@/components/AIResultsPanel';
 import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
+import SendSMSModal from '@/components/SendSMSModal';
 import styles from './agent.module.css';
 
 const CURRENT_APP_VERSION = '2026-10-05-v4';
@@ -23,6 +24,7 @@ export default function AgentDashboard() {
   const [agentStats, setAgentStats] = useState({ callsToday: 0, completedToday: 0, avgDuration: 0 });
   const [showResults, setShowResults] = useState(false);
   const [showMicModal, setShowMicModal] = useState(false);
+  const [showSMSModal, setShowSMSModal] = useState(false);
   
   // Mobile tab state: 'call' | 'script' | 'results'
   const [mobileTab, setMobileTab] = useState('call');
@@ -486,6 +488,7 @@ export default function AgentDashboard() {
             deviceCalling={deviceCalling}
             deviceDuration={deviceDuration}
             formattedDeviceDuration={formattedDeviceDuration}
+            onOpenSMSModal={() => setShowSMSModal(true)}
           />
         </div>
       </div>
@@ -553,6 +556,16 @@ export default function AgentDashboard() {
         onGranted={() => {
           call.setCallError(null);
         }}
+      />
+
+      {/* Official Twilio SMS Modal */}
+      <SendSMSModal
+        isOpen={showSMSModal}
+        onClose={() => setShowSMSModal(false)}
+        leadId={lead.currentLead?.id}
+        attendeeName={lead.currentLead?.full_name}
+        agentName={profile?.full_name}
+        senderPhone="+44 7897 011851"
       />
     </div>
   );
