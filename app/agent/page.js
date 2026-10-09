@@ -19,6 +19,10 @@ export default function AgentDashboard() {
   const call = useCall();
   const lead = useLead();
 
+  const prevCallStateRef = useRef(call.callState);
+  const leadRef = useRef(lead);
+  leadRef.current = lead;
+
   const [campaigns, setCampaigns] = useState([]);
   const [selectedCampaign, setSelectedCampaign] = useState(null);
   const [agentStats, setAgentStats] = useState({ callsToday: 0, completedToday: 0, avgDuration: 0 });
@@ -163,31 +167,31 @@ export default function AgentDashboard() {
     setMobileTab('call');
   };
 
-  /** Handle call end — start AI processing only if call actually connected */
-  const handleCallEnded = useCallback(() => {
-    if (call.wasConnected || call.callDuration > 0) {
-      if (lead.currentCall?.id) {
-        lead.pollForResults(lead.currentCall.id);
-        setShowResults(true);
-        setMobileTab('results');
-      }
-    } else {
-      // Call did not connect (0s duration, error, or cancelled before pickup)
-      setShowResults(false);
-      setMobileTab('call');
-    }
-  }, [call.wasConnected, call.callDuration, lead]);
-
-  /** Watch call state for 'ended' transition */
+  /** Watch call state for 'ended' transition strictly once per call */
   useEffect(() => {
-    if (call.callState === 'ended') {
-      handleCallEnded();
+    const prev = prevCallStateRef.current;
+    prevCallStateRef.current = call.callState;
+
+    if (prev !== 'ended' && call.callState === 'ended') {
+      if (call.wasConnected || call.callDuration > 0) {
+        const currentCallId = leadRef.current?.currentCall?.id;
+        if (currentCallId) {
+          leadRef.current.pollForResults(currentCallId);
+          setShowResults(true);
+          setMobileTab('results');
+        }
+      } else {
+        // Call did not connect (0s duration, error, or cancelled before pickup)
+        setShowResults(false);
+        setMobileTab('call');
+      }
     }
-  }, [call.callState, handleCallEnded]);
+  }, [call.callState, call.wasConnected, call.callDuration]);
 
   /** Cancel AI review and return to dialer */
   const handleCancelAIReview = () => {
     lead.cancelPolling();
+    lead.setError(null);
     setShowResults(false);
     call.resetCall();
     setMobileTab('call');
@@ -198,7 +202,9 @@ export default function AgentDashboard() {
   /** Skip waiting for AI and fill in manual notes */
   const handleSkipAI = () => {
     lead.cancelPolling();
+    lead.setError(null);
     setShowResults(true);
+    setMobileTab('results');
   };
 
   /** Handle results confirmation */
@@ -503,6 +509,7 @@ export default function AgentDashboard() {
             deviceReady={call.deviceReady}
             isMuted={call.isMuted}
             callError={call.callError}
+            processingAI={lead.processingAI}
             onInitDevice={call.initDevice}
             onRequestMicPermission={() => setShowMicModal(true)}
             onStartCall={() => {

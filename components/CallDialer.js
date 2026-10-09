@@ -17,6 +17,7 @@ export default function CallDialer({
   deviceReady,
   isMuted,
   callError,
+  processingAI = false,
   onInitDevice,
   onRequestMicPermission,
   onStartCall,
@@ -322,8 +323,16 @@ export default function CallDialer({
 
             {isEnded && (
               <div className={styles.endedMessage}>
-                <div className="spinner spinner-sm"></div>
-                <span>Processing AI transcript & analysis...</span>
+                {processingAI ? (
+                  <>
+                    <div className="spinner spinner-sm"></div>
+                    <span>Processing AI transcript &amp; analysis...</span>
+                  </>
+                ) : (
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                    Call finished. Review notes &amp; outcome in center panel.
+                  </span>
+                )}
               </div>
             )}
           </>

@@ -220,10 +220,12 @@ export function useLead() {
    * Poll for AI processing results after a call ends.
    */
   const pollForResults = useCallback(async (callId) => {
+    if (!callId) return;
     if (pollTimeoutRef.current) {
       clearTimeout(pollTimeoutRef.current);
       pollTimeoutRef.current = null;
     }
+    setError(null);
     setProcessingAI(true);
 
     const maxAttempts = 45; // 45 × 2s = 90 seconds max wait (long calls + Twilio delay)
