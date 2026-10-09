@@ -253,8 +253,9 @@ export default function AgentDashboard() {
   };
 
   const handlePickInCallAnswer = (question, answer) => {
+    if (!question) return;
     setInCallAnswers(prev => {
-      const next = { ...prev };
+      const next = { ...(prev || {}) };
       if (next[question] === answer) delete next[question];
       else next[question] = answer;
       return next;
@@ -262,9 +263,11 @@ export default function AgentDashboard() {
   };
 
   const handleToggleInCallAction = (actionLabel) => {
-    setInCallActions(prev =>
-      prev.includes(actionLabel) ? prev.filter(a => a !== actionLabel) : [...prev, actionLabel]
-    );
+    if (!actionLabel) return;
+    setInCallActions(prev => {
+      const arr = Array.isArray(prev) ? prev : [];
+      return arr.includes(actionLabel) ? arr.filter(a => a !== actionLabel) : [...arr, actionLabel];
+    });
   };
 
   // Determine the current phase

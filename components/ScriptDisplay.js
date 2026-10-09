@@ -6,13 +6,7 @@ import { parseNextSteps } from '@/lib/nextSteps';
 
 /**
  * ScriptDisplay — Interactive, dynamic call script reader for volunteers.
- * Features:
- * 1. Rich typography with clear distinction for spoken dialog (SAY / ASK) vs notes.
- * 2. Event logistics quick-reference strip (Date, Time, Venue, Address, Bus).
- * 3. Live interactive feedback buttons right in the script so agents can capture
- *    attendance, volunteer interest, transport needs, and registration link status
- *    WHILE talking, without waiting for the call to end.
- * 4. 1-click SMS link dispatch trigger.
+ * Fully defensive against null/undefined props, malformed templates, or non-standard options.
  */
 export default function ScriptDisplay({
   scriptTemplate,
@@ -26,29 +20,41 @@ export default function ScriptDisplay({
   onToggleAction,
   onOpenSMSModal,
 }) {
+  const safeAnswers = answers || {};
+  const safeActions = Array.isArray(actions) ? actions : [];
+
   // Parse structured questions & actions from campaign configuration
-  const groups = useMemo(() => parseNextSteps(nextStepsOptions), [nextStepsOptions]);
-  const questionGroups = useMemo(() => groups.filter(g => g.type === 'question'), [groups]);
-  const actionGroups = useMemo(() => groups.filter(g => g.type === 'action'), [groups]);
+  const groups = useMemo(() => {
+    try {
+      return parseNextSteps(nextStepsOptions || []);
+    } catch {
+      return [];
+    }
+  }, [nextStepsOptions]);
+
+  const questionGroups = useMemo(() => groups.filter(g => g && g.type === 'question'), [groups]);
+  const actionGroups = useMemo(() => groups.filter(g => g && g.type === 'action'), [groups]);
 
   /** Process the script template with dynamic values */
   const processedScript = useMemo(() => {
     if (!scriptTemplate) return null;
 
-    let script = scriptTemplate;
+    let script = String(scriptTemplate);
     script = script.replace(/\\n/g, '\n');
     script = script.replace(/\{\{attendee_name\}\}/gi, attendeeName || '[Attendee]');
     script = script.replace(/\{\{agent_name\}\}/gi, agentName || '[Agent]');
-    script = script.replace(/\{\{date\}\}/gi, new Date().toLocaleDateString('en-US', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    }));
+    try {
+      script = script.replace(/\{\{date\}\}/gi, new Date().toLocaleDateString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      }));
+    } catch {}
 
     // Parse sections (lines starting with ##)
     const sections = [];
     let currentSection = { title: '1. Greeting & Introduction', lines: [] };
 
     script.split('\n').forEach(line => {
-      const trimmed = line.trim();
+      const trimmed = String(line || '').trim();
       if (trimmed.startsWith('## ')) {
         if (currentSection.lines.length > 0) {
           sections.push(currentSection);
@@ -68,7 +74,7 @@ export default function ScriptDisplay({
 
   // Extract quick logistics highlights for Sheffield / general events
   const logistics = useMemo(() => {
-    const text = scriptTemplate || '';
+    const text = String(scriptTemplate || '');
     const items = [];
     if (text.includes('31st October') || text.includes('October 31')) {
       items.push({ icon: '🗓️', label: 'Date', value: '31st October' });
@@ -102,7 +108,7 @@ export default function ScriptDisplay({
     );
   }
 
-  const answeredCount = questionGroups.filter(g => answers[g.label]).length;
+  const answeredCount = questionGroups.filter(g => g?.label && safeAnswers[g.label]).length;
 
   return (
     <div className={`${styles.container} ${isActive ? styles.active : ''}`}>
@@ -139,28 +145,32 @@ export default function ScriptDisplay({
       {/* Script Sections */}
       <div className={styles.scriptBody}>
         {processedScript?.map((section, i) => {
+          const titleStr = String(section?.title || '').toLowerCase();
+          const linesArr = Array.isArray(section?.lines) ? section.lines : [];
+
           const isConfirmationSection = 
-            section.title.toLowerCase().includes('confirm') ||
-            section.title.toLowerCase().includes('question') ||
-            section.lines.some(l => l.startsWith('ASK:'));
+            titleStr.includes('confirm') ||
+            titleStr.includes('question') ||
+            linesArr.some(l => String(l || '').startsWith('ASK:'));
 
           const isClosingOrRegSection =
-            section.title.toLowerCase().includes('registration') ||
-            section.title.toLowerCase().includes('closing') ||
-            section.lines.some(l => l.toLowerCase().includes('registration link'));
+            titleStr.includes('registration') ||
+            titleStr.includes('closing') ||
+            linesArr.some(l => String(l || '').toLowerCase().includes('registration link'));
 
           return (
             <section key={i} className={styles.section} aria-labelledby={`sec-title-${i}`}>
               <h3 id={`sec-title-${i}`} className={styles.sectionTitle}>
                 <span className={styles.sectionNumber}>{i + 1}</span>
-                <span>{section.title}</span>
+                <span>{section?.title || `Section ${i + 1}`}</span>
               </h3>
               <div className={styles.sectionContent}>
-                {section.lines.map((line, j) => {
-                  const isSpeaker = line.startsWith('SAY:');
-                  const isAsk = line.startsWith('ASK:');
-                  const isNote = line.startsWith('NOTE:') || line.startsWith('IF:');
-                  const isAction = line.startsWith('ACTION:') || line.startsWith('DO:');
+                {linesArr.map((line, j) => {
+                  const lineStr = String(line || '');
+                  const isSpeaker = lineStr.startsWith('SAY:');
+                  const isAsk = lineStr.startsWith('ASK:');
+                  const isNote = lineStr.startsWith('NOTE:') || lineStr.startsWith('IF:');
+                  const isAction = lineStr.startsWith('ACTION:') || lineStr.startsWith('DO:');
 
                   return (
                     <div
@@ -177,7 +187,7 @@ export default function ScriptDisplay({
                       {isNote && <span className={styles.noteIcon}>💡</span>}
                       {isAction && <span className={styles.actionIcon}>⚡</span>}
                       <div className={styles.lineText}>
-                        {renderLine(line)}
+                        {renderLine(lineStr)}
                       </div>
                     </div>
                   );
@@ -194,16 +204,20 @@ export default function ScriptDisplay({
                     </div>
 
                     {questionGroups.map((g, qIdx) => {
-                      const currentVal = answers[g.label];
+                      const qLabel = g?.label || '';
+                      const currentVal = safeAnswers[qLabel];
+                      const opts = Array.isArray(g?.options) ? g.options : [];
+
                       return (
-                        <div key={g.id || qIdx} className={styles.questionItem}>
+                        <div key={g?.id || qIdx} className={styles.questionItem}>
                           <div className={styles.questionLabel}>
-                            {qIdx + 1}. {g.label}
+                            {qIdx + 1}. {qLabel}
                           </div>
                           <div className={styles.optionRow}>
-                            {g.options.map(opt => {
-                              const isSelected = currentVal === opt;
-                              const lower = opt.toLowerCase();
+                            {opts.map(opt => {
+                              const optStr = String(opt || '');
+                              const isSelected = currentVal === optStr;
+                              const lower = optStr.toLowerCase();
                               const isYes = lower.startsWith('yes');
                               const isNo = lower.startsWith('no');
                               const isMaybe = lower.includes('not sure') || lower.includes('maybe') || lower.includes('unsure');
@@ -211,15 +225,15 @@ export default function ScriptDisplay({
                               return (
                                 <button
                                   type="button"
-                                  key={opt}
+                                  key={optStr}
                                   className={`${styles.answerChip} ${isSelected ? styles.answerChipSelected : ''} ${
                                     isYes ? styles.chipYes : isNo ? styles.chipNo : isMaybe ? styles.chipMaybe : styles.chipDefault
                                   }`}
-                                  onClick={() => onPickAnswer && onPickAnswer(g.label, opt)}
+                                  onClick={() => onPickAnswer && onPickAnswer(qLabel, optStr)}
                                   aria-pressed={isSelected}
                                 >
                                   {isSelected && <span className={styles.chipCheck}>✓</span>}
-                                  <span>{opt}</span>
+                                  <span>{optStr}</span>
                                 </button>
                               );
                             })}
@@ -260,17 +274,18 @@ export default function ScriptDisplay({
 
                       {/* Standalone actions like "Registration link sent via SMS" */}
                       {actionGroups.map((act, actIdx) => {
-                        const isDone = actions.includes(act.label);
+                        const actLabel = String(act?.label || '');
+                        const isDone = safeActions.includes(actLabel);
                         return (
                           <button
-                            key={act.id || actIdx}
+                            key={act?.id || actIdx}
                             type="button"
                             className={`${styles.answerChip} ${isDone ? styles.answerChipSelected : ''} ${isDone ? styles.chipYes : ''}`}
-                            onClick={() => onToggleAction && onToggleAction(act.label)}
+                            onClick={() => onToggleAction && onToggleAction(actLabel)}
                             style={{ fontSize: '11px' }}
                           >
                             <span>{isDone ? '✅' : '☐'}</span>
-                            <span>{act.label}</span>
+                            <span>{actLabel}</span>
                           </button>
                         );
                       })}
@@ -288,9 +303,10 @@ export default function ScriptDisplay({
 
 /** Render a line with basic formatting (bold text between **) */
 function renderLine(line) {
+  if (!line || typeof line !== 'string') return '';
   const parts = line.split(/(\*\*.*?\*\*)/g);
   return parts.map((part, i) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
+    if (part && part.startsWith('**') && part.endsWith('**')) {
       return <strong key={i} className={styles.boldText}>{part.slice(2, -2)}</strong>;
     }
     return part;
