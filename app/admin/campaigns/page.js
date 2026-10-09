@@ -24,6 +24,8 @@ export default function CampaignsPage() {
   const [requeueSel, setRequeueSel] = useState(DEFAULT_REQUEUE);
   const [requeueBusy, setRequeueBusy] = useState(false);
   const [requeueMsg, setRequeueMsg] = useState('');
+  const [aiParsing, setAiParsing] = useState(false);
+  const [aiMessage, setAiMessage] = useState('');
   const fileInputRef = useRef(null);
 
   // Form state
@@ -58,6 +60,44 @@ export default function CampaignsPage() {
       console.error('Error fetching campaigns:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAiParseScript = async () => {
+    if (!form.scriptTemplate || form.scriptTemplate.trim().length < 10) {
+      alert('Please enter or paste your script first so AI can analyze it.');
+      return;
+    }
+    setAiParsing(true);
+    setAiMessage('');
+    try {
+      const res = await fetch('/api/ai/parse-script', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script: form.scriptTemplate,
+          campaignName: form.name
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to parse script with AI');
+      }
+
+      setForm(prev => ({
+        ...prev,
+        scriptTemplate: data.formattedScript || prev.scriptTemplate,
+        nextStepsOptions: data.flatOptions && data.flatOptions.length > 0
+          ? data.flatOptions.join('\n')
+          : prev.nextStepsOptions
+      }));
+      setAiMessage(`✨ AI formatted your script into clean sections and generated ${data.questions?.length || 0} question buttons!`);
+      setTimeout(() => setAiMessage(''), 8000);
+    } catch (err) {
+      console.error('AI parse error:', err);
+      alert(`AI Parse Error: ${err.message}`);
+    } finally {
+      setAiParsing(false);
     }
   };
 
@@ -484,7 +524,43 @@ export default function CampaignsPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Call Script (Markdown)</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>Call Script (Markdown)</label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleAiParseScript}
+                    disabled={aiParsing || !form.scriptTemplate?.trim()}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2))',
+                      borderColor: 'rgba(168, 85, 247, 0.4)',
+                      color: '#c084fc',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {aiParsing ? (
+                      <><span className="spinner spinner-sm"></span> AI Analyzing...</>
+                    ) : (
+                      <>✨ AI: Structure Script &amp; Generate Buttons</>
+                    )}
+                  </button>
+                </div>
+                {aiMessage && (
+                  <div style={{
+                    marginBottom: 'var(--space-2)',
+                    padding: '8px 12px',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: 'var(--text-xs)',
+                    color: '#34d399',
+                    fontWeight: 600
+                  }}>
+                    {aiMessage}
+                  </div>
+                )}
                 <textarea
                   className="form-textarea"
                   value={form.scriptTemplate}
@@ -819,7 +895,43 @@ export default function CampaignsPage() {
               </div>
 
               <div className="form-group">
-                <label className="form-label">Call Script (Markdown)</label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>Call Script (Markdown)</label>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleAiParseScript}
+                    disabled={aiParsing || !form.scriptTemplate?.trim()}
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2))',
+                      borderColor: 'rgba(168, 85, 247, 0.4)',
+                      color: '#c084fc',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {aiParsing ? (
+                      <><span className="spinner spinner-sm"></span> AI Analyzing...</>
+                    ) : (
+                      <>✨ AI: Structure Script &amp; Generate Buttons</>
+                    )}
+                  </button>
+                </div>
+                {aiMessage && (
+                  <div style={{
+                    marginBottom: 'var(--space-2)',
+                    padding: '8px 12px',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    borderRadius: 'var(--radius-md)',
+                    fontSize: 'var(--text-xs)',
+                    color: '#34d399',
+                    fontWeight: 600
+                  }}>
+                    {aiMessage}
+                  </div>
+                )}
                 <textarea
                   className="form-textarea"
                   value={form.scriptTemplate}

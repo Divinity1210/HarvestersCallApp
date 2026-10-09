@@ -25,6 +25,8 @@ export default function AgentDashboard() {
   const [showResults, setShowResults] = useState(false);
   const [showMicModal, setShowMicModal] = useState(false);
   const [showSMSModal, setShowSMSModal] = useState(false);
+  const [inCallAnswers, setInCallAnswers] = useState({});
+  const [inCallActions, setInCallActions] = useState([]);
   
   // Mobile tab state: 'call' | 'script' | 'results'
   const [mobileTab, setMobileTab] = useState('call');
@@ -189,6 +191,8 @@ export default function AgentDashboard() {
     setShowResults(false);
     call.resetCall();
     setMobileTab('call');
+    setInCallAnswers({});
+    setInCallActions([]);
   };
 
   /** Skip waiting for AI and fill in manual notes */
@@ -211,6 +215,8 @@ export default function AgentDashboard() {
       setDeviceCalling(false);
       setDeviceDuration(0);
       setShowResults(false);
+      setInCallAnswers({});
+      setInCallActions([]);
       call.resetCall();
       setMobileTab('call');
       // Auto-fetch next lead
@@ -235,6 +241,8 @@ export default function AgentDashboard() {
     
     if (success) {
       setShowResults(false);
+      setInCallAnswers({});
+      setInCallActions([]);
       call.resetCall();
       setMobileTab('call');
       // Auto-fetch next lead
@@ -242,6 +250,21 @@ export default function AgentDashboard() {
         await lead.fetchNextLead(selectedCampaign.id);
       }
     }
+  };
+
+  const handlePickInCallAnswer = (question, answer) => {
+    setInCallAnswers(prev => {
+      const next = { ...prev };
+      if (next[question] === answer) delete next[question];
+      else next[question] = answer;
+      return next;
+    });
+  };
+
+  const handleToggleInCallAction = (actionLabel) => {
+    setInCallActions(prev =>
+      prev.includes(actionLabel) ? prev.filter(a => a !== actionLabel) : [...prev, actionLabel]
+    );
   };
 
   // Determine the current phase
@@ -445,6 +468,8 @@ export default function AgentDashboard() {
               nextStepsOptions={selectedCampaign?.next_steps_options || []}
               campaignId={selectedCampaign?.id}
               attendeeName={lead.currentLead?.full_name}
+              initialAnswers={inCallAnswers}
+              initialActions={inCallActions}
               onConfirm={handleConfirmResults}
               onCancel={handleCancelAIReview}
               onSkipAI={handleSkipAI}
@@ -453,9 +478,15 @@ export default function AgentDashboard() {
           ) : (
             <ScriptDisplay
               scriptTemplate={selectedCampaign?.script_template}
+              nextStepsOptions={selectedCampaign?.next_steps_options || []}
               attendeeName={lead.currentLead?.full_name}
               agentName={profile?.full_name}
               isActive={phase === 'calling'}
+              answers={inCallAnswers}
+              actions={inCallActions}
+              onPickAnswer={handlePickInCallAnswer}
+              onToggleAction={handleToggleInCallAction}
+              onOpenSMSModal={() => setShowSMSModal(true)}
             />
           )}
         </div>
@@ -566,6 +597,7 @@ export default function AgentDashboard() {
         attendeeName={lead.currentLead?.full_name}
         agentName={profile?.full_name}
         senderPhone="+44 7897 011851"
+        onSent={() => handleToggleInCallAction('Registration link sent via SMS')}
       />
     </div>
   );

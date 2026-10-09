@@ -10,14 +10,21 @@ export default function SendSMSModal({
   attendeeName,
   agentName,
   senderPhone = '+44 7897 011851',
+  defaultMessage,
+  onSent,
 }) {
   const attendeeFirstName = attendeeName ? attendeeName.split(' ')[0] : 'there';
-  const defaultText = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Harvesters International Christian Centre. We are reaching out regarding your registration for the Next Level Prayer Conference in Sheffield! We look forward to welcoming you.`;
+  const fallbackText = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (31st Oct, 1:00 PM at The Hope Centre, S2 5BQ): https://harvestersonline.net/sheffield. Looking forward to welcoming you!`;
 
-  const [message, setMessage] = useState(defaultText);
+  const [message, setMessage] = useState(defaultMessage || fallbackText);
   const [sending, setSending] = useState(false);
   const [sentSuccess, setSentSuccess] = useState(false);
   const [error, setError] = useState('');
+
+  // Re-sync message when attendee changes
+  useEffect(() => {
+    setMessage(defaultMessage || fallbackText);
+  }, [attendeeName, defaultMessage, fallbackText]);
 
   if (!isOpen) return null;
 
@@ -42,6 +49,7 @@ export default function SendSMSModal({
       }
 
       setSentSuccess(true);
+      if (onSent) onSent();
       setTimeout(() => {
         setSentSuccess(false);
         onClose();

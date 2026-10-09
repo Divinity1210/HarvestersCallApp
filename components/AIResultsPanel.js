@@ -48,6 +48,8 @@ export default function AIResultsPanel({
   nextStepsOptions,
   campaignId,
   attendeeName,
+  initialAnswers = {},
+  initialActions = [],
   onConfirm,
   onCancel,
   onSkipAI,
@@ -56,8 +58,8 @@ export default function AIResultsPanel({
   const groups = useMemo(() => parseNextSteps(nextStepsOptions), [nextStepsOptions]);
 
   // answers: { [questionLabel]: answer } ; actions: standalone action labels
-  const [answers, setAnswers] = useState({});
-  const [actions, setActions] = useState([]);
+  const [answers, setAnswers] = useState(initialAnswers);
+  const [actions, setActions] = useState(initialActions);
   const [notes, setNotes] = useState('');
   const [disposition, setDisposition] = useState('completed');
   const [saving, setSaving] = useState(false);
