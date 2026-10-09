@@ -52,6 +52,7 @@ export async function GET() {
         COUNT(l.id) FILTER (WHERE l.status = 'unreached')::int as unreached_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'wrong_number')::int as wrong_number_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'failed')::int as failed_leads,
+        COUNT(l.id) FILTER (WHERE l.status = 'omitted_outside_uk')::int as omitted_leads,
         COALESCE(MAX(l.retry_round), 0)::int as max_round
       FROM campaigns c
       LEFT JOIN leads l ON l.campaign_id = c.id
@@ -73,8 +74,9 @@ export async function GET() {
         unreached: c.unreached_leads || 0,
         wrong_number: c.wrong_number_leads || 0,
         failed: c.failed_leads || 0,
+        omitted_outside_uk: c.omitted_leads || 0,
       };
-      const attempted = total - pending - byStatus.locked;
+      const attempted = total - pending - byStatus.locked - byStatus.omitted_outside_uk;
       return {
         id: c.id,
         name: c.name,

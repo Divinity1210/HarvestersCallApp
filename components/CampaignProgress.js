@@ -17,6 +17,7 @@ const SEGMENTS = [
   { key: 'unreached', tone: 'muted' },
   { key: 'wrong_number', tone: 'danger' },
   { key: 'failed', tone: 'danger' },
+  { key: 'omitted_outside_uk', tone: 'muted' },
 ];
 
 const fmt = (n) => (n || 0).toLocaleString();
