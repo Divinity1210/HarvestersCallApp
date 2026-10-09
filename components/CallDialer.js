@@ -25,6 +25,7 @@ export default function CallDialer({
   onSkip,
   hasLead,
   attendeeName,
+  agentName,
   phoneNumber,
   onDeviceCallStarted,
   onDeviceCallFinished,
@@ -52,6 +53,9 @@ export default function CallDialer({
   } else if (!smsPhone.startsWith('+') && smsPhone.startsWith('44')) {
     smsPhone = '+' + smsPhone;
   }
+
+  const attendeeFirstName = attendeeName ? attendeeName.split(' ')[0] : 'there';
+  const defaultMessage = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Harvesters International Christian Centre. We are reaching out regarding your registration for the Next Level Prayer Conference in Sheffield! We look forward to welcoming you.`;
 
   // Twilio call state flags
   const isIdle = callState === 'idle';
@@ -154,7 +158,7 @@ export default function CallDialer({
                 <div style={{ display: 'grid', gridTemplateColumns: waNumber ? '1fr 1fr' : '1fr', gap: 'var(--space-2)' }}>
                   {waNumber && (
                     <a
-                      href={`https://wa.me/${waNumber}`}
+                      href={`https://wa.me/${waNumber}?text=${encodeURIComponent(defaultMessage)}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary"
@@ -175,7 +179,7 @@ export default function CallDialer({
                     </a>
                   )}
                   <a
-                    href={`sms:${smsPhone || waNumber || (phoneNumber || '').replace(/[^0-9+]/g, '')}`}
+                    href={`sms:${smsPhone || waNumber || (phoneNumber || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(defaultMessage)}`}
                     className="btn btn-secondary"
                     onClick={onDeviceCallStarted}
                     style={{
@@ -214,15 +218,62 @@ export default function CallDialer({
           // Twilio Actions
           <>
             {isIdle && (
-              <button
-                className={`btn btn-success ${styles.dialBtn}`}
-                onClick={onStartCall}
-                disabled={!deviceReady || !hasLead}
-                aria-label="Start Call"
-              >
-                <span className={styles.btnIcon}>📞</span>
-                <span>Start Call</span>
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width: '100%' }}>
+                <button
+                  className={`btn btn-success ${styles.dialBtn}`}
+                  onClick={onStartCall}
+                  disabled={!deviceReady || !hasLead}
+                  aria-label="Start Call"
+                >
+                  <span className={styles.btnIcon}>📞</span>
+                  <span>Start WebRTC Call</span>
+                </button>
+
+                {hasLead && (
+                  <div style={{ display: 'grid', gridTemplateColumns: waNumber ? '1fr 1fr' : '1fr', gap: 'var(--space-2)' }}>
+                    {waNumber && (
+                      <a
+                        href={`https://wa.me/${waNumber}?text=${encodeURIComponent(defaultMessage)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary"
+                        style={{
+                          textDecoration: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 'var(--space-2)',
+                          padding: 'var(--space-2)',
+                          fontSize: 'var(--text-xs)'
+                        }}
+                        aria-label="Open WhatsApp conversation"
+                      >
+                        <span>💬</span>
+                        <span>WhatsApp</span>
+                      </a>
+                    )}
+                    <a
+                      href={`sms:${smsPhone || waNumber || (phoneNumber || '').replace(/[^0-9+]/g, '')}?body=${encodeURIComponent(defaultMessage)}`}
+                      className="btn btn-secondary"
+                      style={{
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 'var(--space-2)',
+                        padding: 'var(--space-2)',
+                        fontSize: 'var(--text-xs)',
+                        borderColor: 'rgba(59, 130, 246, 0.4)',
+                        color: '#60a5fa'
+                      }}
+                      aria-label="Send SMS / Text message"
+                    >
+                      <span>✉️</span>
+                      <span>Send SMS</span>
+                    </a>
+                  </div>
+                )}
+              </div>
             )}
 
             {(isConnecting || isRinging) && (

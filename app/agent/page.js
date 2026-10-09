@@ -33,7 +33,8 @@ export default function AgentDashboard() {
   const deviceTimerRef = useRef(null);
   const deviceStartTimeRef = useRef(null);
 
-  const callMode = selectedCampaign?.call_mode || 'device';
+  const [modeOverride, setModeOverride] = useState(null);
+  const callMode = modeOverride || selectedCampaign?.call_mode || 'twilio';
 
 
   // Fetch active campaigns
@@ -79,12 +80,15 @@ export default function AgentDashboard() {
       if (!profile?.id) return;
       try {
         const res = await fetch('/api/agent/stats?period=today');
-        if (data?.stats) {
-          setAgentStats({
-            callsToday: data.stats.totalCalls || 0,
-            completedToday: data.stats.completedCalls || 0,
-            avgDuration: data.stats.avgDuration || 0,
-          });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.stats) {
+            setAgentStats({
+              callsToday: data.stats.totalCalls || 0,
+              completedToday: data.stats.completedCalls || 0,
+              avgDuration: data.stats.avgDuration || 0,
+            });
+          }
         }
       } catch (err) {
         console.error('Error fetching agent stats:', err);
@@ -278,6 +282,28 @@ export default function AgentDashboard() {
           )}
         </div>
         <div className={styles.statsRight}>
+          {/* Mode Switcher */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(255,255,255,0.06)', padding: '2px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+            <button
+              type="button"
+              className={`btn btn-sm ${callMode === 'twilio' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: '11px', padding: '3px 8px', height: 'auto', borderRadius: '4px' }}
+              onClick={() => setModeOverride('twilio')}
+              title="Twilio WebRTC in-browser calling with AI recording & QA"
+            >
+              ☎️ Twilio
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${callMode === 'device' ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: '11px', padding: '3px 8px', height: 'auto', borderRadius: '4px' }}
+              onClick={() => setModeOverride('device')}
+              title="Mobile phone SIM calling (Free unlimited minutes)"
+            >
+              📱 Mobile SIM
+            </button>
+          </div>
+
           {typeof selectedCampaign?.stats?.remaining === 'number' && (
             <div className={styles.statChip} title="Contacts in this campaign nobody has called yet">
               <span className={styles.statChipLabel}>Left</span>
@@ -453,6 +479,7 @@ export default function AgentDashboard() {
             onSkip={handleSkip}
             hasLead={!!lead.currentLead}
             attendeeName={lead.currentLead?.full_name}
+            agentName={profile?.full_name}
             phoneNumber={lead.currentLead?.phone_number}
             onDeviceCallStarted={handleDeviceCallStarted}
             onDeviceCallFinished={() => handleDeviceCallFinished(deviceDuration)}

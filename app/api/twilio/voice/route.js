@@ -43,8 +43,10 @@ export async function POST(request) {
     // Build TwiML response
     const twiml = new twilio.twiml.VoiceResponse();
 
+    const callerId = (process.env.TWILIO_CALLER_ID || process.env.TWILIO_PHONE_NUMBER || '+447359317743').trim();
+
     const dial = twiml.dial({
-      callerId: process.env.TWILIO_PHONE_NUMBER,
+      callerId,
       record: 'record-from-answer-dual',
       recordingStatusCallback: `${getBaseUrl(request)}/api/twilio/recording-status`,
       recordingStatusCallbackEvent: 'completed',
