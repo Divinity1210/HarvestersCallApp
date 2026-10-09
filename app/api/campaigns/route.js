@@ -22,6 +22,7 @@ export async function GET(request) {
         COUNT(l.id) FILTER (WHERE l.status = 'unreached')::int as unreached_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'wrong_number')::int as wrong_number_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'failed')::int as failed_leads,
+        COUNT(l.id) FILTER (WHERE l.status = 'omitted_outside_uk')::int as omitted_leads,
         COALESCE(MAX(l.retry_round), 0)::int as max_round
        FROM campaigns c
        LEFT JOIN leads l ON l.campaign_id = c.id
@@ -33,6 +34,7 @@ export async function GET(request) {
       const total = c.total_leads || 0;
       const completed = c.completed_leads || 0;
       const pending = c.pending_leads || 0;
+      const omitted = c.omitted_leads || 0;
       const byStatus = {
         pending,
         locked: c.locked_leads || 0,
@@ -43,13 +45,16 @@ export async function GET(request) {
         unreached: c.unreached_leads || 0,
         wrong_number: c.wrong_number_leads || 0,
         failed: c.failed_leads || 0,
+        omitted_outside_uk: omitted,
       };
-      const attempted = total - pending - byStatus.locked;
+      const attempted = total - pending - byStatus.locked - omitted;
+      const callableTotal = total - omitted;
       return {
         ...c,
         call_mode: c.call_mode || 'device',
         stats: {
           total,
+          callableTotal,
           completed,
           remaining: pending,
           attempted,
@@ -57,8 +62,8 @@ export async function GET(request) {
           failed: byStatus.no_answer + byStatus.busy + byStatus.unreached + byStatus.failed,
           byStatus,
           maxRound: c.max_round || 0,
-          percent: total > 0 ? Math.round((completed / total) * 100) : 0,
-          attemptedPercent: total > 0 ? Math.round((attempted / total) * 100) : 0,
+          percent: callableTotal > 0 ? Math.round((completed / callableTotal) * 100) : 0,
+          attemptedPercent: callableTotal > 0 ? Math.round((attempted / callableTotal) * 100) : 0,
         },
       };
     });

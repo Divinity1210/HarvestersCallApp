@@ -32,11 +32,14 @@ export default function CampaignProgress({ stats }) {
   const total = stats.total;
   const visible = SEGMENTS.filter(s => (by[s.key] || 0) > 0);
 
+  const targetTotal = stats.callableTotal || total;
+  const hasOmitted = (by.omitted_outside_uk || 0) > 0;
+
   return (
     <div className={styles.wrap}>
       <div className={styles.headline}>
         <span>
-          <strong>{fmt(stats.attempted)}</strong> of {fmt(total)} contacts called
+          <strong>{fmt(stats.attempted)}</strong> of {fmt(targetTotal)} {hasOmitted ? 'callable contacts' : 'contacts'} called
           <span className={styles.dim}> · {stats.attemptedPercent}%</span>
         </span>
         <span className={styles.dim}>
