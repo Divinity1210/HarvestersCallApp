@@ -410,12 +410,29 @@ export default function CampaignsPage() {
                     ▶️ Resume
                   </button>
                 )}
-                <button
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => handleStatusChange(campaign.id, 'completed')}
-                >
-                  ✅ Complete
-                </button>
+                {campaign.status === 'completed' && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: 'var(--color-primary, #60a5fa)', fontWeight: 600 }}
+                    onClick={() => handleStatusChange(campaign.id, 'active')}
+                    title="Make this campaign active again for volunteers"
+                  >
+                    ▶️ Reactivate
+                  </button>
+                )}
+                {campaign.status !== 'completed' && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => {
+                      if (window.confirm(`Mark "${campaign.name}" as completed? This will hide it from the volunteer caller workspace.`)) {
+                        handleStatusChange(campaign.id, 'completed');
+                      }
+                    }}
+                    title="Mark campaign as finished (hides from volunteer caller workspace)"
+                  >
+                    ✅ Complete
+                  </button>
+                )}
                 <button
                   className="btn btn-ghost btn-sm"
                   style={{ color: 'var(--color-danger)', marginLeft: 'auto' }}
