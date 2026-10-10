@@ -57,7 +57,7 @@ export default function CallDialer({
   }
 
   const attendeeFirstName = attendeeName ? attendeeName.split(' ')[0] : 'there';
-  const defaultMessage = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Harvesters International Christian Centre. We are reaching out regarding your registration for the Next Level Prayer Conference in Sheffield! We look forward to welcoming you.`;
+  const defaultMessage = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (31st Oct, 1:00 PM at The Hope Centre, S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield. Looking forward to welcoming you!`;
 
   // Twilio call state flags
   const isIdle = callState === 'idle';

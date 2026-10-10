@@ -14,7 +14,7 @@ export default function SendSMSModal({
   onSent,
 }) {
   const attendeeFirstName = attendeeName ? attendeeName.split(' ')[0] : 'there';
-  const fallbackText = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (31st Oct, 1:00 PM at The Hope Centre, S2 5BQ): https://harvestersonline.net/sheffield. Looking forward to welcoming you!`;
+  const fallbackText = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (31st Oct, 1:00 PM at The Hope Centre, S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield. Looking forward to welcoming you!`;
 
   const [message, setMessage] = useState(defaultMessage || fallbackText);
   const [sending, setSending] = useState(false);
