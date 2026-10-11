@@ -35,6 +35,9 @@ export function useCall() {
     if (str.includes('31400') || str.toLowerCase().includes('device not found')) {
       return 'No microphone was detected on this device.';
     }
+    if (str.includes('20101') || str.includes('AccessTokenInvalid') || str.includes('not active')) {
+      return 'Twilio account is currently inactive or out of calling balance. Please check your Twilio console billing, or switch to "📱 Mobile SIM" mode at the top for free calling.';
+    }
     return str;
   };
 
