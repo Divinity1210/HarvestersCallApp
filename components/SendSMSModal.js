@@ -14,7 +14,7 @@ export default function SendSMSModal({
   onSent,
 }) {
   const attendeeFirstName = attendeeName ? attendeeName.split(' ')[0] : 'there';
-  const fallbackText = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (31st Oct, 1:00 PM at The Hope Centre, S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield. Looking forward to welcoming you!`;
+  const fallbackText = `Hi ${attendeeFirstName}, here is your link for NLP Night of Worship Sheffield (31 Oct, 1pm, Hope Centre S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield`;
 
   const [message, setMessage] = useState(defaultMessage || fallbackText);
   const [sending, setSending] = useState(false);
@@ -92,7 +92,12 @@ export default function SendSMSModal({
             placeholder="Type your follow-up SMS..."
           />
           <div className={styles.charCount}>
-            {message.length} / 320 characters ({Math.ceil(message.length / 160) || 1} SMS segment)
+            {message.length} / 320 characters ({Math.ceil(message.length / 160) || 1} SMS segment{Math.ceil(message.length / 160) > 1 ? 's' : ''})
+            {message.length <= 160 && (
+              <span style={{ color: 'var(--color-success, #22c55e)', marginLeft: '6px', fontWeight: 600 }}>
+                • 1 Page (Lowest Cost)
+              </span>
+            )}
           </div>
 
           {error && <div className={styles.error}>{error}</div>}
