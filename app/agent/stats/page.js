@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { outcomeLabel } from '@/lib/leadOutcomes';
@@ -27,7 +27,13 @@ function StatsContent() {
   const [campaignData, setCampaignData] = useState(null);
   const [campaignLoading, setCampaignLoading] = useState(false);
   const [feedbackSearch, setFeedbackSearch] = useState('');
-  const [feedbackFilter, setFeedbackFilter] = useState('all'); // 'all', 'testimonies', 'attending'
+  // Filter: 'volunteers', 'attending', 'transport', 'testimonies', 'all'
+  const [feedbackFilter, setFeedbackFilter] = useState('volunteers');
+  const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
+  const [copiedId, setCopiedId] = useState(null);
+
+  // Ref to scroll to roster
+  const rosterRef = useRef(null);
 
   // Personal stats state
   const [stats, setStats] = useState(null);
@@ -56,18 +62,23 @@ function StatsContent() {
     loadCampaigns();
   }, [isAdmin]);
 
-  // 2. Fetch campaign responses when campaign is selected
+  // 2. Fetch campaign responses when campaign or filter is selected
   useEffect(() => {
     if (!isAdmin || activeTab !== 'campaign') return;
-    fetchCampaignResponses(selectedCampaignId);
-  }, [isAdmin, activeTab, selectedCampaignId]);
+    fetchCampaignResponses(selectedCampaignId, feedbackFilter);
+  }, [isAdmin, activeTab, selectedCampaignId, feedbackFilter]);
 
-  const fetchCampaignResponses = async (campId) => {
+  const fetchCampaignResponses = async (campId, filter = 'all') => {
     setCampaignLoading(true);
     try {
-      const url = campId
-        ? `/api/admin/campaign-responses?campaignId=${encodeURIComponent(campId)}`
-        : '/api/admin/campaign-responses';
+      let url = '/api/admin/campaign-responses';
+      const params = new URLSearchParams();
+      if (campId) params.append('campaignId', campId);
+      if (filter && filter !== 'all') params.append('filter', filter);
+      
+      const queryString = params.toString();
+      if (queryString) url += `?${queryString}`;
+
       const res = await fetch(url);
       const data = await res.json();
       if (res.ok) {
@@ -133,6 +144,20 @@ function StatsContent() {
     }
   };
 
+  const handleKpiCardClick = (targetFilter) => {
+    setFeedbackFilter(targetFilter);
+    if (rosterRef.current) {
+      rosterRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleCopyPhone = (text, id) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
+
   const formatDuration = (seconds) => {
     if (!seconds || seconds <= 0) return '0:00';
     const m = Math.floor(seconds / 60);
@@ -166,29 +191,21 @@ function StatsContent() {
   const filteredFeedbacks = useMemo(() => {
     if (!campaignData?.recentFeedbacks) return [];
     return campaignData.recentFeedbacks.filter(f => {
-      // Filter tab
-      if (feedbackFilter === 'testimonies' && !f.testimony) return false;
-      if (feedbackFilter === 'attending') {
-        const hasAttendingYes = (f.answers || []).some(a => {
-          const l = a.toLowerCase();
-          return l.includes('attend') && l.includes('yes');
-        });
-        if (!hasAttendingYes) return false;
-      }
-
-      // Search keyword
+      // Search keyword filter
       if (feedbackSearch.trim()) {
         const q = feedbackSearch.toLowerCase();
         const matchesName = (f.attendeeName || '').toLowerCase().includes(q);
         const matchesAgent = (f.agentName || '').toLowerCase().includes(q);
         const matchesPhone = (f.phone || '').toLowerCase().includes(q);
+        const matchesEmail = (f.email || '').toLowerCase().includes(q);
+        const matchesZone = (f.zone || '').toLowerCase().includes(q);
         const matchesTestimony = (f.testimony || '').toLowerCase().includes(q);
         const matchesAnswers = (f.answers || []).some(a => a.toLowerCase().includes(q));
-        return matchesName || matchesAgent || matchesPhone || matchesTestimony || matchesAnswers;
+        return matchesName || matchesAgent || matchesPhone || matchesEmail || matchesZone || matchesTestimony || matchesAnswers;
       }
       return true;
     });
-  }, [campaignData?.recentFeedbacks, feedbackFilter, feedbackSearch]);
+  }, [campaignData?.recentFeedbacks, feedbackSearch]);
 
   return (
     <div className={styles.page}>
@@ -258,13 +275,22 @@ function StatsContent() {
             <div className={styles.campaignActions}>
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => fetchCampaignResponses(selectedCampaignId)}
+                onClick={() => fetchCampaignResponses(selectedCampaignId, feedbackFilter)}
                 title="Refresh responses"
               >
                 🔄 Refresh
               </button>
               {selectedCampaignId && (
                 <>
+                  <a
+                    href={`/api/export/volunteers?campaignId=${selectedCampaignId}`}
+                    className={styles.exportBtn}
+                    style={{ borderColor: 'rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.12)', color: '#34D399' }}
+                    download
+                    title="Download CSV of all attendees who opted to serve / volunteer"
+                  >
+                    🤝 Volunteers CSV
+                  </a>
                   <a
                     href={`/api/export/next-steps?campaignId=${selectedCampaignId}`}
                     className={styles.exportBtn}
@@ -286,7 +312,7 @@ function StatsContent() {
             </div>
           </div>
 
-          {campaignLoading ? (
+          {campaignLoading && !campaignData ? (
             <div className="loading-state">
               <div className="spinner spinner-lg"></div>
               <span>Loading campaign feedback and responses...</span>
@@ -299,9 +325,14 @@ function StatsContent() {
             </div>
           ) : (
             <>
-              {/* Summary KPIs Grid */}
+              {/* Summary KPIs Grid - Interactive & Clickable */}
               <div className={styles.kpiGrid}>
-                <div className={styles.kpiCard}>
+                <button
+                  type="button"
+                  className={`${styles.kpiCard} ${styles.kpiCardClickable} ${feedbackFilter === 'all' ? styles.kpiCardActive : ''}`}
+                  onClick={() => handleKpiCardClick('all')}
+                  title="Click to view all answered calls"
+                >
                   <span className={styles.kpiLabel}>Total Calls & Connection</span>
                   <span className={styles.kpiValue}>
                     {campaignData.summary.totalCalls.toLocaleString()}
@@ -309,37 +340,52 @@ function StatsContent() {
                   <span className={styles.kpiSub}>
                     <strong>{campaignData.summary.connectedCalls.toLocaleString()}</strong> connected ({campaignData.summary.totalCalls > 0 ? Math.round((campaignData.summary.connectedCalls / campaignData.summary.totalCalls) * 100) : 0}%)
                   </span>
-                </div>
+                </button>
 
-                <div className={styles.kpiCard}>
+                <button
+                  type="button"
+                  className={`${styles.kpiCard} ${styles.kpiCardClickable} ${feedbackFilter === 'attending' ? styles.kpiCardActive : ''}`}
+                  onClick={() => handleKpiCardClick('attending')}
+                  title="Click to view attendees who confirmed attending"
+                >
                   <span className={styles.kpiLabel}>Attending Confirmed</span>
                   <span className={`${styles.kpiValue} ${styles.kpiValueSuccess}`}>
                     {campaignData.summary.totalYesAttending.toLocaleString()}
                   </span>
                   <span className={styles.kpiSub}>
-                    ✅ Confirmed to attend
+                    ✅ Confirmed to attend (Click to view)
                   </span>
-                </div>
+                </button>
 
-                <div className={styles.kpiCard}>
+                <button
+                  type="button"
+                  className={`${styles.kpiCard} ${styles.kpiCardClickable} ${feedbackFilter === 'volunteers' ? styles.kpiCardActive : ''}`}
+                  onClick={() => handleKpiCardClick('volunteers')}
+                  title="Click to view attendees who opted to serve / volunteer"
+                >
                   <span className={styles.kpiLabel}>Volunteers Ready</span>
                   <span className={`${styles.kpiValue} ${styles.kpiValueAccent}`}>
                     {campaignData.summary.totalYesVolunteer.toLocaleString()}
                   </span>
                   <span className={styles.kpiSub}>
-                    🤝 Agreed to serve
+                    🤝 Agreed to serve (Click to view)
                   </span>
-                </div>
+                </button>
 
-                <div className={styles.kpiCard}>
+                <button
+                  type="button"
+                  className={`${styles.kpiCard} ${styles.kpiCardClickable} ${feedbackFilter === 'transport' ? styles.kpiCardActive : ''}`}
+                  onClick={() => handleKpiCardClick('transport')}
+                  title="Click to view attendees requesting bus/transport"
+                >
                   <span className={styles.kpiLabel}>Bus / Transport Needed</span>
                   <span className={`${styles.kpiValue} ${styles.kpiValueWarning}`}>
                     {campaignData.summary.totalYesTransport.toLocaleString()}
                   </span>
                   <span className={styles.kpiSub}>
-                    🚌 Transportation requests
+                    🚌 Transportation requests (Click to view)
                   </span>
-                </div>
+                </button>
 
                 <div className={styles.kpiCard}>
                   <span className={styles.kpiLabel}>Registration SMS Sent</span>
@@ -351,15 +397,20 @@ function StatsContent() {
                   </span>
                 </div>
 
-                <div className={styles.kpiCard}>
+                <button
+                  type="button"
+                  className={`${styles.kpiCard} ${styles.kpiCardClickable} ${feedbackFilter === 'testimonies' ? styles.kpiCardActive : ''}`}
+                  onClick={() => handleKpiCardClick('testimonies')}
+                  title="Click to view all captured testimonies and notes"
+                >
                   <span className={styles.kpiLabel}>Testimonies & Notes</span>
                   <span className={styles.kpiValue}>
                     {campaignData.summary.totalNotes.toLocaleString()}
                   </span>
                   <span className={styles.kpiSub}>
-                    🙏 Feedback & prayer notes
+                    🙏 Feedback & prayer notes (Click to view)
                   </span>
-                </div>
+                </button>
               </div>
 
               {/* Questions Breakdown Section */}
@@ -425,55 +476,249 @@ function StatsContent() {
                 </div>
               )}
 
-              {/* Recent Attendee Feedback & Testimonies Feed */}
-              <div className={styles.feedbackSection}>
-                <div className={styles.feedbackControls}>
+              {/* ======================================================== */}
+              {/* ATTENDEE & VOLUNTEER ENGAGEMENT ROSTER SECTION            */}
+              {/* ======================================================== */}
+              <div className={styles.rosterSection} ref={rosterRef}>
+                <div className={styles.rosterHeaderBar}>
                   <div>
                     <h2 className={styles.sectionTitle}>
-                      <span>💬 Attendee Feedbacks & Testimonies</span>
+                      {feedbackFilter === 'volunteers' && '🤝 Volunteers Roster (Opted to Serve)'}
+                      {feedbackFilter === 'attending' && '✅ Confirmed Attendees Roster'}
+                      {feedbackFilter === 'transport' && '🚌 Transportation Requests Roster'}
+                      {feedbackFilter === 'testimonies' && '🙏 Captured Testimonies & Notes'}
+                      {feedbackFilter === 'all' && '👥 Attendee Engagement Roster'}
                     </h2>
                     <p className={styles.sectionSubtitle} style={{ marginBottom: 0 }}>
-                      Live AI-extracted responses, attendance answers, and prayer requests.
+                      {feedbackFilter === 'volunteers'
+                        ? 'Attendees who answered "Yes" to volunteering. Contact and engage them directly via phone or email.'
+                        : 'Review attendee responses, contact details, and follow-up notes.'}
                     </p>
                   </div>
 
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <div className={styles.viewModeToggle}>
+                      <button
+                        className={`${styles.viewModeBtn} ${viewMode === 'table' ? styles.viewModeBtnActive : ''}`}
+                        onClick={() => setViewMode('table')}
+                      >
+                        📋 Table
+                      </button>
+                      <button
+                        className={`${styles.viewModeBtn} ${viewMode === 'cards' ? styles.viewModeBtnActive : ''}`}
+                        onClick={() => setViewMode('cards')}
+                      >
+                        🗂️ Cards
+                      </button>
+                    </div>
+
+                    {selectedCampaignId && (
+                      <a
+                        href={feedbackFilter === 'volunteers'
+                          ? `/api/export/volunteers?campaignId=${selectedCampaignId}`
+                          : `/api/export/next-steps?campaignId=${selectedCampaignId}`
+                        }
+                        className={styles.exportBtn}
+                        download
+                        title="Download CSV for current list"
+                      >
+                        📥 Export {feedbackFilter === 'volunteers' ? 'Volunteers' : 'Roster'} (CSV)
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Filter Chips Bar */}
+                <div className={styles.feedbackControls} style={{ marginTop: 'var(--space-2)' }}>
                   <div className={styles.filterChips}>
                     <button
-                      className={`${styles.filterChip} ${feedbackFilter === 'all' ? styles.filterChipActive : ''}`}
-                      onClick={() => setFeedbackFilter('all')}
+                      className={`${styles.filterChip} ${feedbackFilter === 'volunteers' ? styles.filterChipActive : ''}`}
+                      onClick={() => setFeedbackFilter('volunteers')}
+                      style={feedbackFilter === 'volunteers' ? { background: '#10B981', borderColor: '#10B981' } : {}}
                     >
-                      All ({campaignData.recentFeedbacks.length})
-                    </button>
-                    <button
-                      className={`${styles.filterChip} ${feedbackFilter === 'testimonies' ? styles.filterChipActive : ''}`}
-                      onClick={() => setFeedbackFilter('testimonies')}
-                    >
-                      🙏 With Testimonies
+                      🤝 Volunteers Ready ({campaignData.summary.totalYesVolunteer})
                     </button>
                     <button
                       className={`${styles.filterChip} ${feedbackFilter === 'attending' ? styles.filterChipActive : ''}`}
                       onClick={() => setFeedbackFilter('attending')}
                     >
-                      ✅ Attending (Yes)
+                      ✅ Attending Confirmed ({campaignData.summary.totalYesAttending})
+                    </button>
+                    <button
+                      className={`${styles.filterChip} ${feedbackFilter === 'transport' ? styles.filterChipActive : ''}`}
+                      onClick={() => setFeedbackFilter('transport')}
+                    >
+                      🚌 Transport Needed ({campaignData.summary.totalYesTransport})
+                    </button>
+                    <button
+                      className={`${styles.filterChip} ${feedbackFilter === 'testimonies' ? styles.filterChipActive : ''}`}
+                      onClick={() => setFeedbackFilter('testimonies')}
+                    >
+                      🙏 With Testimonies ({campaignData.summary.totalNotes})
+                    </button>
+                    <button
+                      className={`${styles.filterChip} ${feedbackFilter === 'all' ? styles.filterChipActive : ''}`}
+                      onClick={() => setFeedbackFilter('all')}
+                    >
+                      📋 All Feedback
                     </button>
                   </div>
+
+                  <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', minWidth: '240px' }}>
+                    <input
+                      type="text"
+                      className={styles.feedbackSearch}
+                      placeholder="🔍 Search name, phone, email, notes, caller..."
+                      value={feedbackSearch}
+                      onChange={(e) => setFeedbackSearch(e.target.value)}
+                    />
+                  </div>
                 </div>
 
-                <div style={{ marginBottom: 'var(--space-4)' }}>
-                  <input
-                    type="text"
-                    className={styles.feedbackSearch}
-                    placeholder="🔍 Search attendee, agent, phone, or testimony notes..."
-                    value={feedbackSearch}
-                    onChange={(e) => setFeedbackSearch(e.target.value)}
-                  />
-                </div>
-
-                {filteredFeedbacks.length === 0 ? (
+                {/* Loading or Empty State */}
+                {campaignLoading ? (
+                  <div className="loading-state" style={{ minHeight: '180px' }}>
+                    <div className="spinner spinner-lg"></div>
+                    <span>Filtering attendee records...</span>
+                  </div>
+                ) : filteredFeedbacks.length === 0 ? (
                   <div className="empty-state">
-                    <div className="empty-state-text">No feedbacks matching your filter or search.</div>
+                    <div className="empty-state-icon">👥</div>
+                    <div className="empty-state-title">No matching attendees found</div>
+                    <div className="empty-state-text">
+                      {feedbackSearch
+                        ? 'Try clearing your search query.'
+                        : `No attendees recorded under the "${feedbackFilter}" filter.`}
+                    </div>
+                  </div>
+                ) : viewMode === 'table' ? (
+                  /* ===== 1. TABLE VIEW ===== */
+                  <div className={styles.rosterTableWrapper}>
+                    <table className={styles.rosterTable}>
+                      <thead>
+                        <tr>
+                          <th>Attendee</th>
+                          <th>Contact Details</th>
+                          <th>Commitments & Responses</th>
+                          <th>Testimony / Notes</th>
+                          <th>Caller & Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredFeedbacks.map(f => (
+                          <tr key={f.callId}>
+                            {/* Attendee Name */}
+                            <td>
+                              <div className={styles.attendeeCell}>
+                                <div className={styles.avatarSmall}>
+                                  {f.attendeeName.charAt(0).toUpperCase()}
+                                </div>
+                                <div className={styles.attendeeNameCol}>
+                                  <span className={styles.attendeeNameText}>{f.attendeeName}</span>
+                                  {f.refId && (
+                                    <span className={styles.attendeeSubText}>{f.refId}</span>
+                                  )}
+                                  {f.disposition && (
+                                    <span className={`badge ${f.disposition === 'completed' ? 'badge-success' : 'badge-neutral'}`} style={{ width: 'fit-content', marginTop: '2px', fontSize: '10px' }}>
+                                      {outcomeLabel(f.disposition)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* Contact Details (Phone & Email) */}
+                            <td>
+                              <div className={styles.contactCol}>
+                                {f.phone ? (
+                                  <div className={styles.contactRow}>
+                                    <a href={`tel:${f.phone}`} className={styles.contactLink}>
+                                      📞 {f.phone}
+                                    </a>
+                                    <button
+                                      type="button"
+                                      className={styles.copyInlineBtn}
+                                      onClick={() => handleCopyPhone(f.phone, f.callId)}
+                                      title="Copy phone number"
+                                    >
+                                      {copiedId === f.callId ? '✓ Copied' : 'Copy'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>No phone</span>
+                                )}
+
+                                {f.email && (
+                                  <a href={`mailto:${f.email}`} className={styles.contactLink}>
+                                    ✉️ {f.email}
+                                  </a>
+                                )}
+
+                                {f.zone && (
+                                  <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                    📍 Zone: {f.zone}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            {/* Commitments & Answer Badges */}
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {f.optedToServe && (
+                                  <span className={styles.volunteerBadge}>
+                                    🤝 Opted to Serve (Yes)
+                                  </span>
+                                )}
+                                {f.answers.map((ans, idx) => {
+                                  // Skip if already highlighted as volunteerBadge
+                                  if (ans.toLowerCase().includes('volunteer') && f.optedToServe) return null;
+                                  return (
+                                    <span key={idx} className={`${styles.responseTag} ${getAnswerPillClass(ans)}`}>
+                                      {ans}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+
+                            {/* Testimony / Notes */}
+                            <td>
+                              {f.testimony ? (
+                                <div className={styles.testimonySnippet} title={f.testimony}>
+                                  "{f.testimony}"
+                                </div>
+                              ) : (
+                                <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>—</span>
+                              )}
+                            </td>
+
+                            {/* Volunteer Caller & Timestamp */}
+                            <td>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                                  👤 {f.agentName}
+                                </span>
+                                {f.time && (
+                                  <span style={{ color: 'var(--text-tertiary)', fontSize: '11px' }}>
+                                    {new Date(f.time).toLocaleDateString()} at{' '}
+                                    {new Date(f.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </span>
+                                )}
+                                {f.duration > 0 && (
+                                  <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>
+                                    ⏱️ {formatDuration(f.duration)}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 ) : (
+                  /* ===== 2. CARDS VIEW ===== */
                   <div className={styles.feedbackList}>
                     {filteredFeedbacks.map(f => (
                       <div key={f.callId} className={styles.feedbackCard}>
@@ -481,13 +726,34 @@ function StatsContent() {
                           <div>
                             <div className={styles.attendeeTitleRow}>
                               <span className={styles.attendeeName}>{f.attendeeName}</span>
-                              {f.phone && <span className={styles.attendeePhone}>{f.phone}</span>}
+                              {f.phone && (
+                                <div className={styles.contactRow} style={{ marginLeft: '4px' }}>
+                                  <a href={`tel:${f.phone}`} className={styles.contactLink}>
+                                    📞 {f.phone}
+                                  </a>
+                                  <button
+                                    type="button"
+                                    className={styles.copyInlineBtn}
+                                    onClick={() => handleCopyPhone(f.phone, f.callId)}
+                                    title="Copy phone number"
+                                  >
+                                    {copiedId === f.callId ? '✓ Copied' : 'Copy'}
+                                  </button>
+                                </div>
+                              )}
+                              {f.email && (
+                                <a href={`mailto:${f.email}`} className={styles.contactLink} style={{ marginLeft: '6px' }}>
+                                  ✉️ {f.email}
+                                </a>
+                              )}
                               <span className={`badge ${f.disposition === 'completed' ? 'badge-success' : 'badge-neutral'}`}>
                                 {outcomeLabel(f.disposition)}
                               </span>
                             </div>
+
                             <div className={styles.callerMetaRow} style={{ marginTop: '4px' }}>
                               <span className={styles.agentPill}>👤 Caller: {f.agentName}</span>
+                              {f.refId && <span>ID: {f.refId}</span>}
                               {f.time && (
                                 <span className={styles.feedbackDate}>
                                   {new Date(f.time).toLocaleDateString()} at{' '}
@@ -511,15 +777,21 @@ function StatsContent() {
                         </div>
 
                         {/* Confirmed Question Answers */}
-                        {f.answers && f.answers.length > 0 && (
-                          <div className={styles.answersPills}>
-                            {f.answers.map((ans, idx) => (
+                        <div className={styles.answersPills}>
+                          {f.optedToServe && (
+                            <span className={styles.volunteerBadge}>
+                              🤝 Opted to Serve (Yes)
+                            </span>
+                          )}
+                          {f.answers && f.answers.length > 0 && f.answers.map((ans, idx) => {
+                            if (ans.toLowerCase().includes('volunteer') && f.optedToServe) return null;
+                            return (
                               <span key={idx} className={`${styles.answerPill} ${getAnswerPillClass(ans)}`}>
                                 {ans}
                               </span>
-                            ))}
-                          </div>
-                        )}
+                            );
+                          })}
+                        </div>
 
                         {/* Testimony / Feedback Note Box */}
                         {f.testimony && (

@@ -151,15 +151,50 @@ export async function GET(request) {
     `, [campaignId]);
     const callStats = callStatsRes[0] || {};
 
-    // 6. Recent feedback feed (latest 30 calls with notes or answers)
+    // 6. Attendee Feedback Feed (supports ?filter=volunteers, attending, transport, testimonies, all)
+    const filter = searchParams.get('filter') || 'all';
+    let feedbackCondition = `
+      (
+        (qa.next_steps_confirmed IS NOT NULL AND jsonb_array_length(qa.next_steps_confirmed) > 0)
+        OR (qa.testimony_confirmed IS NOT NULL AND length(trim(qa.testimony_confirmed)) > 0)
+      )
+    `;
+
+    if (filter === 'volunteers') {
+      feedbackCondition = `
+        (
+          qa.next_steps_confirmed::text ILIKE '%volunteer%yes%'
+          OR qa.next_steps_confirmed::text ILIKE '%serve%yes%'
+        )
+      `;
+    } else if (filter === 'attending') {
+      feedbackCondition = `(qa.next_steps_confirmed::text ILIKE '%attend%yes%')`;
+    } else if (filter === 'transport') {
+      feedbackCondition = `
+        (
+          qa.next_steps_confirmed::text ILIKE '%bus%yes%'
+          OR qa.next_steps_confirmed::text ILIKE '%transport%yes%'
+        )
+      `;
+    } else if (filter === 'testimonies') {
+      feedbackCondition = `
+        (
+          (qa.testimony_confirmed IS NOT NULL AND length(trim(qa.testimony_confirmed)) > 0)
+          OR (qa.testimony_extracted IS NOT NULL AND length(trim(qa.testimony_extracted)) > 0)
+        )
+      `;
+    }
+
     const recentFeedbacks = await query(`
       SELECT 
         c.id as call_id,
         c.initiated_at,
         c.duration_seconds,
         c.agent_disposition,
+        l.id as lead_id,
         l.full_name as attendee_name,
         l.phone_number,
+        l.metadata as lead_metadata,
         u.full_name as agent_name,
         qa.next_steps_confirmed,
         qa.testimony_confirmed,
@@ -170,12 +205,9 @@ export async function GET(request) {
       LEFT JOIN leads l ON l.id = c.lead_id
       LEFT JOIN users u ON u.id = c.agent_id
       WHERE c.campaign_id = $1
-        AND (
-          (qa.next_steps_confirmed IS NOT NULL AND jsonb_array_length(qa.next_steps_confirmed) > 0)
-          OR (qa.testimony_confirmed IS NOT NULL AND length(trim(qa.testimony_confirmed)) > 0)
-        )
+        AND ${feedbackCondition}
       ORDER BY c.initiated_at DESC
-      LIMIT 35
+      LIMIT 500
     `, [campaignId]);
 
     return NextResponse.json({
@@ -198,18 +230,42 @@ export async function GET(request) {
       },
       questions,
       standaloneActions,
-      recentFeedbacks: recentFeedbacks.map(f => ({
-        callId: f.call_id,
-        time: f.initiated_at,
-        duration: f.duration_seconds,
-        disposition: f.agent_disposition,
-        attendeeName: f.attendee_name || 'Anonymous Attendee',
-        phone: f.phone_number,
-        agentName: f.agent_name || 'Volunteer',
-        answers: Array.isArray(f.next_steps_confirmed) ? f.next_steps_confirmed : [],
-        testimony: f.testimony_confirmed || f.transcript_summary || '',
-        scriptScore: f.script_adherence_score,
-      })),
+      recentFeedbacks: recentFeedbacks.map(f => {
+        const meta = f.lead_metadata || {};
+        const answers = Array.isArray(f.next_steps_confirmed) ? f.next_steps_confirmed : [];
+        const optedToServe = answers.some(a => {
+          const l = a.toLowerCase();
+          return (l.includes('volunteer') || l.includes('serve')) && l.includes('yes');
+        });
+        const isAttending = answers.some(a => {
+          const l = a.toLowerCase();
+          return l.includes('attend') && l.includes('yes');
+        });
+        const needsTransport = answers.some(a => {
+          const l = a.toLowerCase();
+          return (l.includes('bus') || l.includes('transport')) && l.includes('yes');
+        });
+
+        return {
+          callId: f.call_id,
+          leadId: f.lead_id,
+          time: f.initiated_at,
+          duration: f.duration_seconds,
+          disposition: f.agent_disposition,
+          attendeeName: f.attendee_name || 'Anonymous Attendee',
+          phone: f.phone_number || '',
+          email: meta.email || meta.Email || '',
+          zone: meta.zone || meta.Zone || '',
+          refId: meta.id || '',
+          agentName: f.agent_name || 'Volunteer Caller',
+          answers,
+          optedToServe,
+          isAttending,
+          needsTransport,
+          testimony: f.testimony_confirmed || f.transcript_summary || '',
+          scriptScore: f.script_adherence_score,
+        };
+      }),
     });
   } catch (err) {
     console.error('Campaign responses API error:', err);

@@ -14,24 +14,28 @@ export async function GET(request) {
       SELECT 
         c.initiated_at,
         l.full_name as lead_name,
+        l.phone_number,
         l.metadata as lead_metadata,
+        u.full_name as agent_name,
         qa.next_steps_confirmed
       FROM qa_results qa
       JOIN calls c ON c.id = qa.call_id
       LEFT JOIN leads l ON l.id = c.lead_id
+      LEFT JOIN users u ON u.id = c.agent_id
       WHERE qa.next_steps_confirmed IS NOT NULL 
         AND qa.next_steps_confirmed != '[]'::jsonb
         AND ($1::uuid IS NULL OR c.campaign_id = $1::uuid)
       ORDER BY qa.created_at DESC
     `, [campaignId]);
 
-    const headers = ['Date', 'Attendee', 'Zone', 'Next Step', 'Commitment'];
+    const headers = ['Date', 'Attendee', 'Phone Number', 'Email', 'Zone', 'Next Step', 'Commitment', 'Volunteer Caller'];
     const csvRows = [];
 
     for (const r of rows) {
       const date = r.initiated_at ? new Date(r.initiated_at).toLocaleDateString() : '';
       const meta = r.lead_metadata || {};
       const zone = meta.zone || meta.Zone || '';
+      const email = meta.email || meta.Email || '';
 
       const steps = Array.isArray(r.next_steps_confirmed)
         ? r.next_steps_confirmed
@@ -40,10 +44,13 @@ export async function GET(request) {
       for (const step of steps) {
         csvRows.push([
           date,
-          r.lead_name || 'Unknown',
+          csvEscape(r.lead_name || 'Unknown'),
+          csvEscape(r.phone_number || ''),
+          csvEscape(email),
           csvEscape(zone),
           csvEscape(typeof step === 'string' ? step : step.step || step.name || JSON.stringify(step)),
           'Yes',
+          csvEscape(r.agent_name || 'Volunteer Caller'),
         ]);
       }
     }
