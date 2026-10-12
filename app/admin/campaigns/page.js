@@ -369,6 +369,14 @@ export default function CampaignsPage() {
               <CampaignProgress stats={campaignStats[campaign.id]} />
 
               <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-4)', borderTop: '1px solid var(--border-subtle)', paddingTop: 'var(--space-3)', flexWrap: 'wrap' }}>
+                <a
+                  href={`/agent/stats?campaignId=${campaign.id}`}
+                  className="btn btn-secondary btn-sm"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                  title="View recorded AI feedbacks, question breakdowns, and testimonies for this campaign"
+                >
+                  📊 View Responses
+                </a>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => { setShowImport(campaign.id); setImportTab('google'); }}

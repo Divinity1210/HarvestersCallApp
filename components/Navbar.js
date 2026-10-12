@@ -33,7 +33,7 @@ export default function Navbar() {
               📞 Workspace
             </a>
             <a href="/agent/stats" className={`${styles.navLink} ${isActive('/agent/stats') ? styles.navLinkActive : ''}`}>
-              📊 My Stats
+              📊 {isAdmin ? 'Stats' : 'My Stats'}
             </a>
             {isAdmin && (
               <>
