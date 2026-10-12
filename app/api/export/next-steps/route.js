@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { getSessionUser } from '@/lib/auth';
 
 /**
  * GET /api/export/next-steps?campaignId=xxx
@@ -7,6 +8,11 @@ import { query } from '@/lib/db';
  */
 export async function GET(request) {
   try {
+    const session = await getSessionUser();
+    if (!session || session.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Unauthorized. Super Admin access required.' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(request.url);
     const campaignId = searchParams.get('campaignId') || null;
 

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import styles from './Navbar.module.css';
 
 export default function Navbar() {
-  const { profile, signOut, isAdmin } = useAuth();
+  const { profile, signOut, isAdmin, isSuperAdmin } = useAuth();
   const pathname = usePathname();
 
   const isActive = (path) => pathname === path;
@@ -33,7 +33,7 @@ export default function Navbar() {
               📞 Workspace
             </a>
             <a href="/agent/stats" className={`${styles.navLink} ${isActive('/agent/stats') ? styles.navLinkActive : ''}`}>
-              📊 {isAdmin ? 'Stats' : 'My Stats'}
+              📊 {isSuperAdmin ? 'Stats' : 'My Stats'}
             </a>
             {isAdmin && (
               <>

@@ -11,8 +11,8 @@ import { parseNextSteps, splitValue } from '@/lib/nextSteps';
 export async function GET(request) {
   try {
     const session = await getSessionUser();
-    if (!session || (session.role !== 'admin' && session.role !== 'super_admin')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!session || session.role !== 'super_admin') {
+      return NextResponse.json({ error: 'Unauthorized. Super Admin access required.' }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);

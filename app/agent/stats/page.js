@@ -7,19 +7,19 @@ import { outcomeLabel } from '@/lib/leadOutcomes';
 import styles from './stats.module.css';
 
 function StatsContent() {
-  const { profile, isAdmin } = useAuth();
+  const { profile, isSuperAdmin } = useAuth();
   const searchParams = useSearchParams();
   const initialCampaignId = searchParams.get('campaignId') || '';
 
-  // Mode: for admins default to 'campaign', for regular volunteers 'personal'
-  const [activeTab, setActiveTab] = useState(isAdmin ? 'campaign' : 'personal');
+  // Mode: for super admin default to 'campaign', for regular admins and volunteers 'personal'
+  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'campaign' : 'personal');
 
-  // When isAdmin finishes loading / resolves from auth hook, update activeTab if needed
+  // When isSuperAdmin finishes loading / resolves from auth hook, update activeTab if needed
   useEffect(() => {
-    if (isAdmin && !searchParams.get('tab')) {
+    if (isSuperAdmin && !searchParams.get('tab')) {
       setActiveTab('campaign');
     }
-  }, [isAdmin]);
+  }, [isSuperAdmin]);
 
   // Campaign responses state
   const [campaignsList, setCampaignsList] = useState([]);
@@ -43,7 +43,7 @@ function StatsContent() {
 
   // 1. Fetch campaigns list for campaign switcher
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isSuperAdmin) return;
     const loadCampaigns = async () => {
       try {
         const res = await fetch('/api/campaigns');
@@ -60,13 +60,13 @@ function StatsContent() {
       }
     };
     loadCampaigns();
-  }, [isAdmin]);
+  }, [isSuperAdmin]);
 
   // 2. Fetch campaign responses when campaign or filter is selected
   useEffect(() => {
-    if (!isAdmin || activeTab !== 'campaign') return;
+    if (!isSuperAdmin || activeTab !== 'campaign') return;
     fetchCampaignResponses(selectedCampaignId, feedbackFilter);
-  }, [isAdmin, activeTab, selectedCampaignId, feedbackFilter]);
+  }, [isSuperAdmin, activeTab, selectedCampaignId, feedbackFilter]);
 
   const fetchCampaignResponses = async (campId, filter = 'all') => {
     setCampaignLoading(true);
@@ -99,10 +99,10 @@ function StatsContent() {
   // 3. Fetch personal agent stats
   useEffect(() => {
     if (!profile?.id) return;
-    if (!isAdmin || activeTab === 'personal') {
+    if (!isSuperAdmin || activeTab === 'personal') {
       fetchPersonalStats();
     }
-  }, [profile?.id, period, activeTab, isAdmin]);
+  }, [profile?.id, period, activeTab, isSuperAdmin]);
 
   const fetchPersonalStats = async () => {
     setPersonalLoading(true);
@@ -213,12 +213,12 @@ function StatsContent() {
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>
-            {isAdmin && activeTab === 'campaign'
+            {isSuperAdmin && activeTab === 'campaign'
               ? '📊 Campaign Feedback & Responses'
               : '📊 My Performance'}
           </h1>
           <p className={styles.subtitle}>
-            {isAdmin && activeTab === 'campaign'
+            {isSuperAdmin && activeTab === 'campaign'
               ? 'Real-time AI metrics, attendee question breakdowns, and recorded testimonies'
               : `${profile?.full_name || 'Agent'} — Personal stats and call history`}
           </p>
@@ -226,14 +226,14 @@ function StatsContent() {
 
         <div className={styles.headerActions}>
           <a href="/agent" className="btn btn-ghost">← Workspace</a>
-          {isAdmin && (
+          {isSuperAdmin && (
             <a href="/admin/campaigns" className="btn btn-ghost">📋 Campaigns</a>
           )}
         </div>
       </div>
 
       {/* ===== Admin View Switcher (Campaign Responses vs Personal) ===== */}
-      {isAdmin && (
+      {isSuperAdmin && (
         <div className={styles.viewSwitcher}>
           <button
             className={`${styles.viewTabBtn} ${activeTab === 'campaign' ? styles.viewTabBtnActive : ''}`}
@@ -251,9 +251,9 @@ function StatsContent() {
       )}
 
       {/* ======================================================== */}
-      {/* 1. CAMPAIGN RESPONSES & AI FEEDBACK VIEW (FOR ADMINS)     */}
+      {/* 1. CAMPAIGN RESPONSES & AI FEEDBACK VIEW (SUPER ADMIN)   */}
       {/* ======================================================== */}
-      {isAdmin && activeTab === 'campaign' ? (
+      {isSuperAdmin && activeTab === 'campaign' ? (
         <div>
           {/* Campaign Selector & Quick Export Bar */}
           <div className={`glass-card ${styles.campaignControlsBar}`}>
