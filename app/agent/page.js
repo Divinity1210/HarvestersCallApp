@@ -42,8 +42,55 @@ export default function AgentDashboard() {
   const deviceStartTimeRef = useRef(null);
 
   const [modeOverride, setModeOverride] = useState(null);
-  const callMode = modeOverride || selectedCampaign?.call_mode || 'twilio';
 
+  // Restore stored callMode preference for selected campaign or global preference
+  useEffect(() => {
+    if (!selectedCampaign?.id) return;
+    try {
+      const stored = localStorage.getItem(`harvesters_call_mode_${selectedCampaign.id}`);
+      if (stored === 'device' || stored === 'twilio') {
+        setModeOverride(stored);
+      } else {
+        const globalPref = localStorage.getItem('harvesters_call_mode_pref');
+        if (globalPref === 'device' || globalPref === 'twilio') {
+          setModeOverride(globalPref);
+        } else {
+          setModeOverride(selectedCampaign.call_mode || 'device');
+        }
+      }
+    } catch {}
+  }, [selectedCampaign?.id, selectedCampaign?.call_mode]);
+
+  // Safe fallback is ALWAYS 'device' (Volunteer Mobile SIM), never Twilio
+  const callMode = modeOverride || selectedCampaign?.call_mode || 'device';
+
+  const handleSwitchMode = async (newMode) => {
+    setModeOverride(newMode);
+    if (newMode === 'device' && call.callError) {
+      call.setCallError(null);
+    }
+    try {
+      localStorage.setItem('harvesters_call_mode_pref', newMode);
+      if (selectedCampaign?.id) {
+        localStorage.setItem(`harvesters_call_mode_${selectedCampaign.id}`, newMode);
+      }
+    } catch {}
+
+    // If logged in as admin or super_admin, sync the change to the campaign in DB
+    // so all volunteers in this campaign automatically get this calling mode!
+    if ((profile?.role === 'admin' || profile?.role === 'super_admin') && selectedCampaign?.id) {
+      try {
+        await fetch('/api/campaigns', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: selectedCampaign.id, call_mode: newMode }),
+        });
+        setSelectedCampaign(prev => (prev ? { ...prev, call_mode: newMode } : prev));
+      } catch (err) {
+        console.error('Failed to sync campaign call mode to server:', err);
+      }
+    }
+  };
 
   // Fetch active campaigns
   useEffect(() => {
@@ -54,7 +101,12 @@ export default function AgentDashboard() {
         const active = (data?.campaigns || []).filter(c => c.status === 'active');
         if (active.length > 0) {
           setCampaigns(active);
-          const initial = active[0];
+          let initial = active[0];
+          try {
+            const savedCampId = localStorage.getItem('harvesters_selected_campaign');
+            const found = active.find(c => c.id === savedCampId);
+            if (found) initial = found;
+          } catch {}
           setSelectedCampaign(initial);
           lead.restoreActiveLead(initial.id);
         }
@@ -300,6 +352,9 @@ export default function AgentDashboard() {
               onChange={(e) => {
                 const c = campaigns.find(c => c.id === e.target.value);
                 setSelectedCampaign(c);
+                try {
+                  if (c) localStorage.setItem('harvesters_selected_campaign', c.id);
+                } catch {}
                 if (c) lead.restoreActiveLead(c.id);
               }}
               aria-label="Select Campaign"
@@ -322,7 +377,7 @@ export default function AgentDashboard() {
               type="button"
               className={`btn btn-sm ${callMode === 'twilio' ? 'btn-primary' : 'btn-ghost'}`}
               style={{ fontSize: '11px', padding: '3px 8px', height: 'auto', borderRadius: '4px' }}
-              onClick={() => setModeOverride('twilio')}
+              onClick={() => handleSwitchMode('twilio')}
               title="Twilio WebRTC in-browser calling with AI recording & QA"
             >
               ☎️ Twilio
@@ -331,7 +386,7 @@ export default function AgentDashboard() {
               type="button"
               className={`btn btn-sm ${callMode === 'device' ? 'btn-primary' : 'btn-ghost'}`}
               style={{ fontSize: '11px', padding: '3px 8px', height: 'auto', borderRadius: '4px' }}
-              onClick={() => setModeOverride('device')}
+              onClick={() => handleSwitchMode('device')}
               title="Mobile phone SIM calling (Free unlimited minutes)"
             >
               📱 Mobile SIM
@@ -552,7 +607,7 @@ export default function AgentDashboard() {
       )}
 
       {/* Error Toast */}
-      {(lead.error || call.callError) && (
+      {(lead.error || (callMode === 'twilio' ? call.callError : null)) && (
         <div className="toast-container">
           <div
             className="toast toast-error"
@@ -569,8 +624,8 @@ export default function AgentDashboard() {
           >
             <span>⚠️</span>
             <span>
-              {lead.error || call.callError}
-              {call.callError && (call.callError.toLowerCase().includes('microphone') || call.callError.toLowerCase().includes('permission')) && (
+              {lead.error || (callMode === 'twilio' ? call.callError : null)}
+              {callMode === 'twilio' && call.callError && (call.callError.toLowerCase().includes('microphone') || call.callError.toLowerCase().includes('permission')) && (
                 <strong style={{ marginLeft: 6, textDecoration: 'underline' }}>Tap for help</strong>
               )}
             </span>
