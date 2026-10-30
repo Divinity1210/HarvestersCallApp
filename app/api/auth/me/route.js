@@ -9,6 +9,8 @@ export async function GET() {
       return NextResponse.json({ user: null, profile: null });
     }
 
+    const isImpersonating = !!session.impersonator;
+
     // Refresh user state from database
     const rows = await query(
       `SELECT id, email, full_name, role, is_active, must_change_password 
@@ -18,7 +20,7 @@ export async function GET() {
       [session.id]
     );
 
-    if (rows.length === 0 || !rows[0].is_active) {
+    if (rows.length === 0 || (!rows[0].is_active && !isImpersonating)) {
       return NextResponse.json({ user: null, profile: null });
     }
 
@@ -30,7 +32,9 @@ export async function GET() {
         full_name: u.full_name,
         role: u.role,
         is_active: u.is_active,
-        must_change_password: !!u.must_change_password,
+        // Never force temporary password change screen when a Super Admin is impersonating
+        must_change_password: isImpersonating ? false : !!u.must_change_password,
+        impersonator: session.impersonator || null,
       },
     });
   } catch (err) {

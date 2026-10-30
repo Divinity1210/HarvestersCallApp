@@ -142,10 +142,63 @@ export function AuthProvider({ children }) {
     }
   };
 
+  /** Impersonate an agent (Super Admin only) */
+  const impersonateAgent = async (agentId, redirectTo = '/agent') => {
+    const res = await fetch('/api/auth/impersonate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Could not impersonate agent');
+    }
+    try {
+      localStorage.removeItem('harvesters_active_lead');
+      localStorage.removeItem('harvesters_active_call');
+    } catch {}
+    setUser(data.user);
+    setProfile(data.profile);
+    if (typeof window !== 'undefined' && redirectTo) {
+      window.location.href = redirectTo;
+    }
+    return data;
+  };
+
+  /** Exit agent impersonation and return to Super Admin */
+  const stopImpersonating = async (redirectTo = null) => {
+    const res = await fetch('/api/auth/impersonate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'stop' }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || 'Could not exit impersonation');
+    }
+    try {
+      localStorage.removeItem('harvesters_active_lead');
+      localStorage.removeItem('harvesters_active_call');
+    } catch {}
+    setUser(data.user);
+    setProfile(data.profile);
+    if (typeof window !== 'undefined') {
+      if (redirectTo) {
+        window.location.href = redirectTo;
+      } else {
+        window.location.reload();
+      }
+    }
+    return data;
+  };
+
   /** Role checks */
   const isAdmin = profile?.role === ROLES.ADMIN || profile?.role === ROLES.SUPER_ADMIN;
   const isAgent = profile?.role === ROLES.AGENT;
   const isSuperAdmin = profile?.role === ROLES.SUPER_ADMIN;
+  const impersonator = profile?.impersonator || null;
+  const isImpersonating = !!impersonator;
+  const canImpersonate = isSuperAdmin || impersonator?.role === ROLES.SUPER_ADMIN;
 
   const value = {
     user,
@@ -158,6 +211,11 @@ export function AuthProvider({ children }) {
     isAdmin,
     isAgent,
     isSuperAdmin,
+    impersonator,
+    isImpersonating,
+    canImpersonate,
+    impersonateAgent,
+    stopImpersonating,
     fetchProfile,
     setProfile,
   };

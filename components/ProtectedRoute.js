@@ -10,7 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
  * @param {'agent'|'admin'|'any'} props.requiredRole - Required role to access this route
  */
 export default function ProtectedRoute({ children, requiredRole = 'any' }) {
-  const { user, profile, loading, isAdmin, isAgent } = useAuth();
+  const { user, profile, loading, isAdmin, isAgent, canImpersonate } = useAuth();
 
   useEffect(() => {
     if (loading) return;
@@ -31,16 +31,16 @@ export default function ProtectedRoute({ children, requiredRole = 'any' }) {
     }
 
     // Role check
-    if (requiredRole === 'admin' && !isAdmin) {
+    if (requiredRole === 'admin' && !isAdmin && !canImpersonate) {
       window.location.replace('/agent');
       return;
     }
 
-    if (requiredRole === 'agent' && !isAgent && !isAdmin) {
+    if (requiredRole === 'agent' && !isAgent && !isAdmin && !canImpersonate) {
       window.location.replace('/');
       return;
     }
-  }, [user, profile, loading, isAdmin, isAgent, requiredRole]);
+  }, [user, profile, loading, isAdmin, isAgent, canImpersonate, requiredRole]);
 
   if (loading) {
     return (

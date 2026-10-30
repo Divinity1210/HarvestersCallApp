@@ -12,7 +12,7 @@ const ROLE_OPTIONS = [
 ];
 
 export default function AgentManagementPage() {
-  const { profile, isSuperAdmin } = useAuth();
+  const { profile, isSuperAdmin, canImpersonate, impersonateAgent } = useAuth();
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
@@ -27,6 +27,7 @@ export default function AgentManagementPage() {
   const [shareInfo, setShareInfo] = useState(null); // { name, credentials, title }
   const [actionError, setActionError] = useState('');
   const [resettingId, setResettingId] = useState(null);
+  const [impersonatingId, setImpersonatingId] = useState(null);
 
   // Fetch agents
   useEffect(() => {
@@ -322,6 +323,25 @@ export default function AgentManagementPage() {
                     </div>
                   ) : (
                     <>
+                      {canImpersonate && (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={impersonatingId === agent.id}
+                          onClick={async () => {
+                            setImpersonatingId(agent.id);
+                            setActionError('');
+                            try {
+                              await impersonateAgent(agent.id, '/agent');
+                            } catch (err) {
+                              setActionError(err.message);
+                              setImpersonatingId(null);
+                            }
+                          }}
+                          title={`Bypass login and open Agent Workspace as ${agent.full_name}`}
+                        >
+                          {impersonatingId === agent.id ? 'Switching…' : `🎭 Login as ${agent.full_name?.split(' ')[0] || 'Agent'}`}
+                        </button>
+                      )}
                       <button
                         className="btn btn-ghost btn-sm"
                         onClick={() => setEditingAgent(agent.id)}

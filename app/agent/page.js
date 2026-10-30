@@ -11,12 +11,13 @@ import AIResultsPanel from '@/components/AIResultsPanel';
 import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
 import SendSMSModal from '@/components/SendSMSModal';
 import CallbackSearchModal from '@/components/CallbackSearchModal';
+import ImpersonateAgentModal from '@/components/ImpersonateAgentModal';
 import styles from './agent.module.css';
 
 const CURRENT_APP_VERSION = '2026-10-05-v4';
 
 export default function AgentDashboard() {
-  const { profile } = useAuth();
+  const { profile, canImpersonate, isImpersonating } = useAuth();
   const call = useCall();
   const lead = useLead();
 
@@ -31,6 +32,7 @@ export default function AgentDashboard() {
   const [showMicModal, setShowMicModal] = useState(false);
   const [showSMSModal, setShowSMSModal] = useState(false);
   const [showCallbackModal, setShowCallbackModal] = useState(false);
+  const [showImpersonateModal, setShowImpersonateModal] = useState(false);
   const [inCallAnswers, setInCallAnswers] = useState({});
   const [inCallActions, setInCallActions] = useState([]);
   
@@ -439,6 +441,34 @@ export default function AgentDashboard() {
               {Math.floor(agentStats.avgDuration / 60)}:{(agentStats.avgDuration % 60).toString().padStart(2, '0')}
             </span>
           </div>
+          {canImpersonate && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowImpersonateModal(true)}
+              title="Super Admin: Impersonate or switch to any agent"
+              style={{
+                fontSize: '12px',
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-md)',
+                border: isImpersonating
+                  ? '1px solid rgba(245, 158, 11, 0.5)'
+                  : '1px solid rgba(168, 85, 247, 0.5)',
+                background: isImpersonating
+                  ? 'rgba(245, 158, 11, 0.15)'
+                  : 'rgba(168, 85, 247, 0.15)',
+                color: isImpersonating ? '#fbbf24' : '#d8b4fe',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 600,
+              }}
+            >
+              <span>🎭</span>
+              <span>{isImpersonating ? `As: ${profile?.full_name?.split(' ')[0]}` : 'Impersonate'}</span>
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -723,6 +753,14 @@ export default function AgentDashboard() {
         callMode={callMode}
         onSelectLead={handleSelectCallbackLead}
       />
+
+      {/* Super Admin Agent Impersonation Modal */}
+      {canImpersonate && (
+        <ImpersonateAgentModal
+          isOpen={showImpersonateModal}
+          onClose={() => setShowImpersonateModal(false)}
+        />
+      )}
     </div>
   );
 }

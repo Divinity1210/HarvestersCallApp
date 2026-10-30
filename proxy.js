@@ -67,7 +67,7 @@ export async function proxy(request) {
     return deny(401, 'Your session has expired. Please sign in again.');
   }
 
-  const isAdmin = ADMIN_ROLES.has(user.role);
+  const isAdmin = ADMIN_ROLES.has(user.role) || ADMIN_ROLES.has(user.impersonator?.role);
   const isCampaignWrite = pathname.startsWith('/api/campaigns') && method !== 'GET';
 
   if (!isAdmin && (isCampaignWrite || ADMIN_PREFIXES.some(p => pathname.startsWith(p)))) {
