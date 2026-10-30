@@ -23,6 +23,7 @@ export async function GET(request) {
         COUNT(l.id) FILTER (WHERE l.status = 'wrong_number')::int as wrong_number_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'failed')::int as failed_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'omitted_outside_uk')::int as omitted_leads,
+        COUNT(l.id) FILTER (WHERE l.metadata->>'last_sms_sent_at' IS NOT NULL)::int as sms_sent_leads,
         COALESCE(MAX(l.retry_round), 0)::int as max_round
        FROM campaigns c
        LEFT JOIN leads l ON l.campaign_id = c.id
@@ -61,6 +62,7 @@ export async function GET(request) {
           // Kept for older UI: contacts we tried but couldn't finish
           failed: byStatus.no_answer + byStatus.busy + byStatus.unreached + byStatus.failed,
           byStatus,
+          smsSent: c.sms_sent_leads || 0,
           maxRound: c.max_round || 0,
           percent: callableTotal > 0 ? Math.round((completed / callableTotal) * 100) : 0,
           attemptedPercent: callableTotal > 0 ? Math.round((attempted / callableTotal) * 100) : 0,

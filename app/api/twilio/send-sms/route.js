@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import twilio from 'twilio';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
+import { sendTwilioSms } from '@/lib/sms';
 
 /**
  * POST /api/twilio/send-sms
- * Sends an outbound SMS directly through Twilio using the church's dedicated UK number (+44 7897 011851).
- * Completely protects volunteer personal numbers and delivers official church follow-ups.
+ * Sends an outbound SMS directly through Twilio using the 'NLP UK' Alphanumeric Sender ID
+ * (with automatic fallback to the church's dedicated UK number +44 7897 011851).
  */
 export async function POST(request) {
   try {
@@ -15,7 +15,7 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { leadId, message } = await request.json();
+    const { leadId, message, senderId = 'NLP UK' } = await request.json();
     if (!leadId || !message || !message.trim()) {
       return NextResponse.json({ error: 'Lead ID and message required' }, { status: 400 });
     }
@@ -31,25 +31,20 @@ export async function POST(request) {
     }
 
     const lead = leadRows[0];
-    const toPhone = lead.phone_number.trim();
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromPhone = (process.env.TWILIO_PHONE_NUMBER || '+447897011851').trim();
-
-    const client = twilio(accountSid, authToken);
-
-    const twilioMsg = await client.messages.create({
-      from: fromPhone,
-      to: toPhone,
+    const result = await sendTwilioSms({
+      to: lead.phone_number,
       body: message.trim(),
+      senderId: senderId || 'NLP UK',
+      fallbackToNumber: true,
     });
 
     // Record that an SMS was dispatched
     const updatedMeta = {
       ...(lead.metadata || {}),
       last_sms_sent_at: new Date().toISOString(),
-      last_sms_sid: twilioMsg.sid,
+      last_sms_sid: result.sid,
+      last_sms_from: result.fromUsed,
       last_sms_sender: session.full_name || session.email,
     };
 
@@ -62,8 +57,9 @@ export async function POST(request) {
 
     return NextResponse.json({
       success: true,
-      messageSid: twilioMsg.sid,
-      from: fromPhone,
+      messageSid: result.sid,
+      from: result.fromUsed,
+      fallbackUsed: result.fallbackUsed,
     });
   } catch (err) {
     console.error('Send SMS error:', err);

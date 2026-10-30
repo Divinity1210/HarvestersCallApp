@@ -9,7 +9,7 @@ export default function SendSMSModal({
   leadId,
   attendeeName,
   agentName,
-  senderPhone = '+44 7897 011851',
+  senderPhone = 'NLP UK',
   defaultMessage,
   onSent,
 }) {
@@ -40,6 +40,7 @@ export default function SendSMSModal({
         body: JSON.stringify({
           leadId,
           message: message.trim(),
+          senderId: senderPhone,
         }),
       });
 

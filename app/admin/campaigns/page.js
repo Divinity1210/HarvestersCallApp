@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { DEFAULT_NEXT_STEPS } from '@/lib/constants';
 import NextStepsEditor from '@/components/NextStepsEditor';
 import CampaignProgress from '@/components/CampaignProgress';
+import CampaignBlastModal from '@/components/CampaignBlastModal';
 import { RETRYABLE_STATUSES, DEFAULT_REQUEUE, outcomeLabel } from '@/lib/leadOutcomes';
 
 export default function CampaignsPage() {
@@ -23,6 +24,7 @@ export default function CampaignsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleteTyped, setDeleteTyped] = useState('');
   const [requeueFor, setRequeueFor] = useState(null); // campaign object
+  const [blastFor, setBlastFor] = useState(null); // campaign object for SMS blast
   const [requeueSel, setRequeueSel] = useState(DEFAULT_REQUEUE);
   const [requeueBusy, setRequeueBusy] = useState(false);
   const [requeueMsg, setRequeueMsg] = useState('');
@@ -344,6 +346,7 @@ export default function CampaignsPage() {
                     <span>📋 {(campaign.next_steps_options || []).length} next steps</span>
                     <span>🗓️ Created {new Date(campaign.created_at).toLocaleDateString()}</span>
                     <span>🗑️ Retention: {campaign.retention_days} days</span>
+                    <span>✉️ {(campaignStats[campaign.id]?.smsSent || 0).toLocaleString()} SMS sent</span>
                     <span style={{ fontWeight: 600, color: campaign.call_mode === 'device' ? 'var(--color-success)' : 'var(--color-primary)' }}>
                       {campaign.call_mode === 'device' ? '📱 Volunteer Phone (SIM)' : '☁️ Twilio WebRTC'}
                     </span>
@@ -381,6 +384,13 @@ export default function CampaignsPage() {
                     📊 View Responses
                   </a>
                 )}
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setBlastFor(campaign)}
+                  title="Send bulk personalized SMS to contacts in this campaign via NLP UK"
+                >
+                  📣 Blast SMS
+                </button>
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={() => { setShowImport(campaign.id); setImportTab('google'); }}
@@ -1106,6 +1116,16 @@ export default function CampaignsPage() {
           </div>
         );
       })()}
+
+      {/* Campaign SMS Blast Modal */}
+      {blastFor && (
+        <CampaignBlastModal
+          campaign={blastFor}
+          isOpen={!!blastFor}
+          onClose={() => setBlastFor(null)}
+          onCompleted={fetchCampaigns}
+        />
+      )}
     </div>
   );
 }

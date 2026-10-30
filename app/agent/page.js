@@ -661,7 +661,7 @@ export default function AgentDashboard() {
         leadId={lead.currentLead?.id}
         attendeeName={lead.currentLead?.full_name}
         agentName={profile?.full_name}
-        senderPhone="+44 7897 011851"
+        senderPhone="NLP UK"
         onSent={() => handleToggleInCallAction('Registration link sent via SMS')}
       />
     </div>
