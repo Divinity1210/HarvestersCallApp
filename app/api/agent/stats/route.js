@@ -28,10 +28,12 @@ export async function GET(request) {
     // Agent's calls in period with QA results and lead info
     const calls = await query(
       `SELECT 
-        c.id, c.call_status, c.agent_disposition, c.duration_seconds, c.initiated_at, c.created_at,
+        c.id, c.lead_id, c.campaign_id, c.call_status, c.agent_disposition, c.duration_seconds, c.initiated_at, c.created_at,
         l.full_name as lead_name,
+        l.phone_number as lead_phone,
         camp.name as campaign_name,
-        qa.script_adherence_score, qa.flagged, qa.testimony_confirmed, qa.next_steps_confirmed, qa.processing_status
+        camp.next_steps_options as campaign_next_steps_options,
+        qa.script_adherence_score, qa.flagged, qa.testimony_confirmed, qa.next_steps_confirmed, qa.transcript_summary, qa.processing_status
        FROM calls c
        LEFT JOIN leads l ON l.id = c.lead_id
        LEFT JOIN campaigns camp ON camp.id = c.campaign_id

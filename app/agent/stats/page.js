@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { outcomeLabel } from '@/lib/leadOutcomes';
+import { parseNextSteps, normaliseSelections, splitValue } from '@/lib/nextSteps';
+import AIResultsPanel from '@/components/AIResultsPanel';
 import styles from './stats.module.css';
 
 function StatsContent() {
@@ -40,6 +42,8 @@ function StatsContent() {
   const [recentCalls, setRecentCalls] = useState([]);
   const [personalLoading, setPersonalLoading] = useState(true);
   const [period, setPeriod] = useState('week'); // 'today', 'week', 'month', 'all'
+  const [editingCall, setEditingCall] = useState(null);
+  const [saveNotice, setSaveNotice] = useState('');
 
   // 1. Fetch campaigns list for campaign switcher
   useEffect(() => {
@@ -893,7 +897,19 @@ function StatsContent() {
 
               {/* Recent Calls */}
               <div className={styles.recentSection}>
-                <h2 className={styles.sectionTitle}>Recent Calls</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: '8px', marginBottom: 'var(--space-3)' }}>
+                  <div>
+                    <h2 className={styles.sectionTitle} style={{ marginBottom: 2 }}>Recent Calls</h2>
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', margin: 0 }}>
+                      Tap any call below to log callback feedback or edit recorded responses
+                    </p>
+                  </div>
+                  {saveNotice && (
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success, #22c55e)', fontWeight: 600 }}>
+                      {saveNotice}
+                    </span>
+                  )}
+                </div>
                 {recentCalls.length === 0 ? (
                   <div className="empty-state" style={{ padding: 'var(--space-8)' }}>
                     <div className="empty-state-text">No calls in this period.</div>
@@ -907,9 +923,23 @@ function StatsContent() {
                       const label = outcomeLabel(rawOutcome);
 
                       return (
-                        <div key={call.id} className={`glass-card ${styles.callRow}`}>
+                        <div
+                          key={call.id}
+                          className={`glass-card ${styles.callRow}`}
+                          onClick={() => setEditingCall(call)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              setEditingCall(call);
+                            }
+                          }}
+                          style={{ cursor: 'pointer' }}
+                          title="Click to log callback feedback or edit responses"
+                        >
                           <div className={styles.callInfo}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                               <span className={styles.callName}>{call.leadName}</span>
                               {call.campaign_name && (
                                 <span style={{ fontSize: '10px', background: 'rgba(255, 255, 255, 0.08)', color: 'var(--text-secondary)', padding: '2px 6px', borderRadius: '4px' }}>
@@ -951,6 +981,20 @@ function StatsContent() {
                             {call.qa?.flagged && (
                               <span className="badge badge-danger" style={{ fontSize: 'var(--text-xs)' }}>🚩</span>
                             )}
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                color: '#93c5fd',
+                                background: 'rgba(59, 130, 246, 0.12)',
+                                border: '1px solid rgba(59, 130, 246, 0.3)',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              ✏️ {isPositive ? 'Edit Feedback' : 'Log Feedback'}
+                            </span>
                           </div>
                         </div>
                       );
@@ -962,6 +1006,128 @@ function StatsContent() {
           )}
         </div>
       )}
+
+      {/* Edit Call Feedback / Callback Modal */}
+      {editingCall && (() => {
+        const rawOptions = editingCall.campaign_next_steps_options;
+        const nextStepsOptions = Array.isArray(rawOptions)
+          ? rawOptions
+          : typeof rawOptions === 'string'
+          ? (() => { try { return JSON.parse(rawOptions); } catch { return []; } })()
+          : [];
+
+        const rawConfirmed = editingCall.qa?.next_steps_confirmed;
+        const confirmedList = Array.isArray(rawConfirmed)
+          ? rawConfirmed
+          : typeof rawConfirmed === 'string'
+          ? (() => { try { return JSON.parse(rawConfirmed); } catch { return []; } })()
+          : [];
+
+        const groups = parseNextSteps(nextStepsOptions);
+        const normalized = normaliseSelections(confirmedList, groups);
+        const initialAnswers = {};
+        const initialActions = [];
+        normalized.forEach(v => {
+          const { question, answer } = splitValue(v);
+          if (question) initialAnswers[question] = answer;
+          else initialActions.push(answer);
+        });
+
+        const initialDisposition =
+          editingCall.agent_disposition === 'callback_requested'
+            ? 'callback_requested'
+            : 'completed';
+
+        const handleSaveEditedCall = async (confirmedData) => {
+          const isNoAnswer = ['no_answer', 'busy', 'wrong_number'].includes(confirmedData.disposition);
+          const res = await fetch('/api/calls/submit-results', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              callId: editingCall.id,
+              nextStepsConfirmed: confirmedData.nextSteps,
+              testimonyConfirmed: confirmedData.testimony,
+              agentDisposition: confirmedData.disposition,
+              noAnswer: isNoAnswer,
+            }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            alert(err.error || 'Could not save feedback');
+            return;
+          }
+          const savedName = editingCall.leadName;
+          setEditingCall(null);
+          setSaveNotice(`✅ Feedback saved for ${savedName}`);
+          setTimeout(() => setSaveNotice(''), 5000);
+          fetchPersonalStats();
+        };
+
+        return (
+          <div
+            className="modal-overlay"
+            onClick={() => setEditingCall(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-call-feedback-title"
+          >
+            <div
+              className="modal-content"
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: 680, maxHeight: '90vh', overflowY: 'auto' }}
+            >
+              <div className="modal-header" style={{ marginBottom: 'var(--space-3)' }}>
+                <div>
+                  <h2 className="modal-title" id="edit-call-feedback-title">
+                    📝 {editingCall.leadName} — Call Feedback
+                  </h2>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: 4, fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                    {editingCall.campaign_name && (
+                      <span>📋 {editingCall.campaign_name}</span>
+                    )}
+                    {editingCall.lead_phone && (
+                      <a
+                        href={`tel:${editingCall.lead_phone}`}
+                        style={{ color: '#93c5fd', fontWeight: 600, textDecoration: 'none' }}
+                      >
+                        📞 {editingCall.lead_phone}
+                      </a>
+                    )}
+                    <span>
+                      🕒 {new Date(editingCall.created_at).toLocaleDateString()} at{' '}
+                      {new Date(editingCall.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => setEditingCall(null)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <AIResultsPanel
+                key={editingCall.id}
+                qaResults={null}
+                processing={false}
+                nextStepsOptions={nextStepsOptions}
+                campaignId={editingCall.campaign_id}
+                attendeeName={editingCall.leadName}
+                initialAnswers={initialAnswers}
+                initialActions={initialActions}
+                initialNotes={editingCall.qa?.testimony_confirmed || ''}
+                initialDisposition={initialDisposition}
+                submitLabel={`💾 Save Feedback for ${editingCall.leadName}`}
+                cancelLabel="Cancel"
+                onConfirm={handleSaveEditedCall}
+                onCancel={() => setEditingCall(null)}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

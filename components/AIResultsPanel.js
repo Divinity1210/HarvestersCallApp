@@ -50,6 +50,10 @@ export default function AIResultsPanel({
   attendeeName,
   initialAnswers = {},
   initialActions = [],
+  initialNotes = '',
+  initialDisposition = 'completed',
+  submitLabel = null,
+  cancelLabel = '← Return to Dialer',
   onConfirm,
   onCancel,
   onSkipAI,
@@ -60,8 +64,8 @@ export default function AIResultsPanel({
   // answers: { [questionLabel]: answer } ; actions: standalone action labels
   const [answers, setAnswers] = useState(initialAnswers);
   const [actions, setActions] = useState(initialActions);
-  const [notes, setNotes] = useState('');
-  const [disposition, setDisposition] = useState('completed');
+  const [notes, setNotes] = useState(initialNotes || '');
+  const [disposition, setDisposition] = useState(initialDisposition || 'completed');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
@@ -520,7 +524,7 @@ export default function AIResultsPanel({
           disabled={saving || assisting}
           style={{ width: '100%' }}
         >
-          {saving ? 'Saving…' : `💾 Save “${outcome.label}” & Next Attendee`}
+          {saving ? 'Saving…' : (submitLabel || `💾 Save “${outcome.label}” & Next Attendee`)}
         </button>
         {onCancel && (
           <button
@@ -530,7 +534,7 @@ export default function AIResultsPanel({
             disabled={saving}
             style={{ width: '100%', color: 'var(--text-secondary)' }}
           >
-            ← Return to Dialer
+            {cancelLabel}
           </button>
         )}
       </div>
