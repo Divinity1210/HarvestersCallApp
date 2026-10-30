@@ -184,6 +184,51 @@ export function useLead() {
   }, [currentLead?.id]);
 
   /**
+   * Select a specific lead by ID (e.g. when an attendee calls the agent back).
+   * Safely returns any uncalled active lead back to 'pending' on the server.
+   */
+  const selectCallbackLead = useCallback(async (leadId) => {
+    if (!leadId) return null;
+    setLoading(true);
+    setError(null);
+    setQaResults(null);
+
+    try {
+      const deviceId = getDeviceId();
+      const res = await fetch('/api/leads/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId,
+          currentLeadId: currentLead?.id || null,
+          deviceId,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Could not load attendee');
+      }
+
+      setCurrentLead(data.lead);
+      setCurrentCall(data.call);
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('harvesters_active_lead', JSON.stringify(data.lead));
+        localStorage.setItem('harvesters_active_call', JSON.stringify(data.call));
+      }
+
+      return data;
+    } catch (err) {
+      console.error('Select callback lead error:', err);
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [currentLead?.id]);
+
+  /**
    * Release the current lead lock (e.g., agent skips or disconnects).
    * Lead will be marked 'unreached' so no other agent is given it automatically.
    */
@@ -354,6 +399,7 @@ export function useLead() {
     processingAI,
     restoreActiveLead,
     fetchNextLead,
+    selectCallbackLead,
     releaseLead,
     pollForResults,
     cancelPolling,

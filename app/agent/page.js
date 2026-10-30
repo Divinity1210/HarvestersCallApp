@@ -10,6 +10,7 @@ import LeadCard from '@/components/LeadCard';
 import AIResultsPanel from '@/components/AIResultsPanel';
 import MicrophonePermissionModal from '@/components/MicrophonePermissionModal';
 import SendSMSModal from '@/components/SendSMSModal';
+import CallbackSearchModal from '@/components/CallbackSearchModal';
 import styles from './agent.module.css';
 
 const CURRENT_APP_VERSION = '2026-10-05-v4';
@@ -29,6 +30,7 @@ export default function AgentDashboard() {
   const [showResults, setShowResults] = useState(false);
   const [showMicModal, setShowMicModal] = useState(false);
   const [showSMSModal, setShowSMSModal] = useState(false);
+  const [showCallbackModal, setShowCallbackModal] = useState(false);
   const [inCallAnswers, setInCallAnswers] = useState({});
   const [inCallActions, setInCallActions] = useState([]);
   
@@ -217,6 +219,30 @@ export default function AgentDashboard() {
     call.resetCall();
     setShowResults(false);
     setMobileTab('call');
+  };
+
+  /** Handle selecting a lead who called the agent back */
+  const handleSelectCallbackLead = async (leadId, actionMode = 'feedback') => {
+    if (deviceTimerRef.current) {
+      clearInterval(deviceTimerRef.current);
+      deviceTimerRef.current = null;
+    }
+    setDeviceCalling(false);
+    setDeviceDuration(0);
+    setInCallAnswers({});
+    setInCallActions([]);
+    call.resetCall();
+
+    const loaded = await lead.selectCallbackLead(leadId);
+    if (!loaded) return;
+
+    if (actionMode === 'feedback') {
+      setShowResults(true);
+      setMobileTab('results');
+    } else {
+      setShowResults(false);
+      setMobileTab('script');
+    }
   };
 
   /** Watch call state for 'ended' transition strictly once per call */
@@ -415,6 +441,28 @@ export default function AgentDashboard() {
           </div>
           <button
             type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowCallbackModal(true)}
+            title="Find an attendee who called you back"
+            style={{
+              fontSize: '12px',
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid rgba(59, 130, 246, 0.45)',
+              background: 'rgba(59, 130, 246, 0.12)',
+              color: '#93c5fd',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontWeight: 600,
+            }}
+          >
+            <span>🔍</span>
+            <span>Callback</span>
+          </button>
+          <button
+            type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => window.location.reload(true)}
             title="Reload App"
@@ -490,6 +538,7 @@ export default function AgentDashboard() {
             lead={lead.currentLead}
             loading={lead.loading}
             onFetchNext={handleFetchLead}
+            onOpenCallbackSearch={() => setShowCallbackModal(true)}
             phase={phase}
             campaignSelected={!!selectedCampaign}
             callMode={callMode}
@@ -663,6 +712,16 @@ export default function AgentDashboard() {
         agentName={profile?.full_name}
         senderPhone="NLP UK"
         onSent={() => handleToggleInCallAction('Registration link sent via SMS')}
+      />
+
+      {/* Callback & Attendee Search Modal */}
+      <CallbackSearchModal
+        isOpen={showCallbackModal}
+        onClose={() => setShowCallbackModal(false)}
+        campaignId={selectedCampaign?.id}
+        campaignName={selectedCampaign?.name}
+        callMode={callMode}
+        onSelectLead={handleSelectCallbackLead}
       />
     </div>
   );

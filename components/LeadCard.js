@@ -9,7 +9,15 @@ import { outcomeLabel, roundLabel } from '@/lib/leadOutcomes';
  * Mobile-optimised with a compact header strip, expandable metadata,
  * and touch-friendly action buttons.
  */
-export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSelected, callMode = 'device' }) {
+export default function LeadCard({
+  lead,
+  loading,
+  onFetchNext,
+  onOpenCallbackSearch,
+  phase,
+  campaignSelected,
+  callMode = 'device',
+}) {
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   if (!campaignSelected) {
@@ -42,6 +50,16 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
               <>🎯 Fetch Next Attendee</>
             )}
           </button>
+          {onOpenCallbackSearch && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onOpenCallbackSearch}
+              style={{ marginTop: 'var(--space-2)', width: '100%' }}
+            >
+              🔍 Someone Called Back? Search Attendee
+            </button>
+          )}
         </div>
       </div>
     );
@@ -171,6 +189,23 @@ export default function LeadCard({ lead, loading, onFetchNext, phase, campaignSe
           disabled={loading || phase === 'results'}
         >
           🎯 Fetch Next Attendee
+        </button>
+      )}
+
+      {onOpenCallbackSearch && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={onOpenCallbackSearch}
+          style={{
+            marginTop: 'var(--space-2)',
+            width: '100%',
+            fontSize: 'var(--text-xs)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          🔍 Someone Called Back? Search Attendee
         </button>
       )}
     </div>

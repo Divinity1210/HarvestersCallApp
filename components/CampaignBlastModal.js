@@ -24,16 +24,16 @@ const UNREACHED_STATUSES = [
 
 const QUICK_TEMPLATES = [
   {
+    label: '📢 Date Change (21 Nov • 1 Page)',
+    text: 'IMPORTANT UPDATE: NLP Night of Worship will NOT hold tomorrow, 31 Oct. New date: 21 Nov, doors 2PM. Register: https://tinyurl.com/NightofWorshipinSheffield',
+  },
+  {
+    label: '👋 Personalized Date Change (1 Page)',
+    text: 'Hi {{first_name}}, NLP Night of Worship will NOT hold tomorrow 31 Oct. New date: 21 Nov 2026, 2PM. Register: https://tinyurl.com/NightofWorshipinSheffield',
+  },
+  {
     label: '🎟️ Registration / Event Link',
-    text: 'Hi {{first_name}}, this is NLP UK! Here is your registration link for Night of Worship in Sheffield (31 Oct, 1pm, Hope Centre S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield',
-  },
-  {
-    label: '📵 Missed Call Follow-Up',
-    text: 'Hi {{first_name}}, we tried reaching you from NLP UK regarding Night of Worship Sheffield (31 Oct, 1pm at Hope Centre S2 5BQ). Register here: https://tinyurl.com/NightofWorshipinSheffield',
-  },
-  {
-    label: '⏰ Final Reminder',
-    text: 'Hi {{first_name}}, reminder from NLP UK! Doors open at 1:00 PM for Night of Worship Sheffield at The Hope Centre (S2 5BQ). We look forward to welcoming you!',
+    text: 'Hi {{first_name}}, this is NLP UK! Here is your registration link for Night of Worship in Sheffield (21 Nov, 2pm, Hope Centre S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield',
   },
 ];
 
