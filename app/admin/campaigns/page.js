@@ -303,17 +303,17 @@ export default function CampaignsPage() {
   };
 
   return (
-    <div style={{ padding: 'var(--space-6)', maxWidth: 'var(--max-content-width)', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-6)' }}>
+    <div style={{ padding: 'var(--space-4)', maxWidth: 'var(--max-content-width)', margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800 }}>📋 Campaigns</h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>
             Create and manage call campaigns
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-          <a href="/admin" className="btn btn-ghost">← Dashboard</a>
-          <button className="btn btn-primary" onClick={() => {
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+          <a href="/admin" className="btn btn-ghost btn-sm">← Dashboard</a>
+          <button className="btn btn-primary btn-sm" onClick={() => {
             setForm({
               name: '', description: '',
               callMode: 'device',
@@ -335,14 +335,14 @@ export default function CampaignsPage() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           {campaigns.map(campaign => (
-            <div key={campaign.id} className="glass-card" style={{ padding: 'var(--space-5)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
+            <div key={campaign.id} className="glass-card" style={{ padding: 'var(--space-4)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+                <div style={{ minWidth: '200px', flex: 1 }}>
                   <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-1)' }}>{campaign.name}</h3>
                   <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: 'var(--space-3)' }}>
                     {campaign.description || 'No description'}
                   </p>
-                  <div style={{ display: 'flex', gap: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', flexWrap: 'wrap' }}>
                     <span>📋 {(campaign.next_steps_options || []).length} next steps</span>
                     <span>🗓️ Created {new Date(campaign.created_at).toLocaleDateString()}</span>
                     <span>🗑️ Retention: {campaign.retention_days} days</span>
@@ -352,7 +352,7 @@ export default function CampaignsPage() {
                     </span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0, alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button
                     type="button"
                     className={`badge ${campaign.call_mode === 'device' ? 'badge-success' : 'badge-neutral'}`}
@@ -509,7 +509,7 @@ export default function CampaignsPage() {
 
               <div className="form-group">
                 <label className="form-label" style={{ fontWeight: 600 }}>Calling Method</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
                   <label style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -563,7 +563,7 @@ export default function CampaignsPage() {
               </div>
 
               <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>Call Script (Markdown)</label>
                   <button
                     type="button"
@@ -880,7 +880,7 @@ export default function CampaignsPage() {
 
               <div className="form-group">
                 <label className="form-label" style={{ fontWeight: 600 }}>Calling Method</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-1)' }}>
                   <label style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -934,7 +934,7 @@ export default function CampaignsPage() {
               </div>
 
               <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>Call Script (Markdown)</label>
                   <button
                     type="button"

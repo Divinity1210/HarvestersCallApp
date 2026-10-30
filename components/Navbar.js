@@ -31,6 +31,14 @@ export default function Navbar() {
     }
   };
 
+  const handleOpenCallbackFromNav = () => {
+    if (pathname === '/agent') {
+      window.dispatchEvent(new CustomEvent('harvesters:open-callback'));
+    } else {
+      window.location.href = '/agent?callback=1';
+    }
+  };
+
   return (
     <>
       {/* ===== TOP NAVBAR ===== */}
@@ -41,7 +49,7 @@ export default function Navbar() {
               <img 
                 src="/harvesters-logo.png" 
                 alt="Harvesters International Christian Centre" 
-                style={{ height: 36, width: 'auto', display: 'block' }}
+                className={styles.logoImg}
               />
             </a>
           </div>
@@ -77,20 +85,17 @@ export default function Navbar() {
               type="button"
               onClick={handleExitImpersonation}
               disabled={exiting}
-              className="btn btn-warning btn-sm"
-              style={{
-                fontSize: '11px',
-                padding: '4px 10px',
-                fontWeight: 700,
-              }}
+              className={`btn btn-warning btn-sm ${styles.exitImpersonateBtn}`}
               title="Exit agent impersonation and return to Super Admin"
             >
-              {exiting ? 'Restoring...' : '👑 Exit to Super Admin'}
+              <span>👑</span>
+              <span className={styles.exitTextFull}>{exiting ? 'Restoring...' : 'Exit to Super Admin'}</span>
+              <span className={styles.exitTextShort}>{exiting ? '...' : 'Exit'}</span>
             </button>
           )}
 
           <div
-            className={styles.userInfo}
+            className={`${styles.userInfo} ${canImpersonate ? styles.userInfoInteractive : ''} ${isImpersonating ? styles.userInfoImpersonating : ''}`}
             onClick={canImpersonate ? () => setShowImpersonate(true) : undefined}
             role={canImpersonate ? 'button' : undefined}
             tabIndex={canImpersonate ? 0 : undefined}
@@ -107,21 +112,6 @@ export default function Navbar() {
             title={
               canImpersonate
                 ? 'Click to impersonate / switch to any agent account'
-                : undefined
-            }
-            style={
-              canImpersonate
-                ? {
-                    cursor: 'pointer',
-                    padding: '4px 10px',
-                    borderRadius: 'var(--radius-md)',
-                    border: isImpersonating
-                      ? '1px solid rgba(245, 158, 11, 0.5)'
-                      : '1px solid rgba(168, 85, 247, 0.4)',
-                    background: isImpersonating
-                      ? 'rgba(245, 158, 11, 0.12)'
-                      : 'rgba(168, 85, 247, 0.1)',
-                  }
                 : undefined
             }
           >
@@ -142,10 +132,16 @@ export default function Navbar() {
                   : '📞 Agent'}
               </span>
             </div>
+            {canImpersonate && (
+              <span className={styles.mobileSwitchBadge}>
+                {isImpersonating ? `🎭 ${profile?.full_name?.split(' ')[0] || 'Agent'} ▾` : '👑 Switch ▾'}
+              </span>
+            )}
           </div>
 
-          <button onClick={signOut} className={`btn btn-ghost btn-sm ${styles.logoutBtn}`}>
-            Sign Out
+          <button onClick={signOut} className={`btn btn-ghost btn-sm ${styles.logoutBtn}`} title="Sign Out">
+            <span className={styles.logoutTextFull}>Sign Out</span>
+            <span className={styles.logoutTextShort}>🚪</span>
           </button>
         </div>
       </nav>
@@ -167,35 +163,53 @@ export default function Navbar() {
           <span className={styles.bottomTabLabel}>Stats</span>
         </a>
         {(isAdmin || canImpersonate) ? (
-          <a
-            href="/admin/campaigns"
-            className={`${styles.bottomTab} ${isActive('/admin/campaigns') ? styles.bottomTabActive : ''}`}
-          >
-            <span className={styles.bottomTabIcon}>📋</span>
-            <span className={styles.bottomTabLabel}>Campaigns</span>
-          </a>
+          <>
+            <a
+              href="/admin/campaigns"
+              className={`${styles.bottomTab} ${isActive('/admin/campaigns') ? styles.bottomTabActive : ''}`}
+            >
+              <span className={styles.bottomTabIcon}>📋</span>
+              <span className={styles.bottomTabLabel}>Campaigns</span>
+            </a>
+            <a
+              href="/admin/agents"
+              className={`${styles.bottomTab} ${isActive('/admin/agents') ? styles.bottomTabActive : ''}`}
+            >
+              <span className={styles.bottomTabIcon}>👥</span>
+              <span className={styles.bottomTabLabel}>Agents</span>
+            </a>
+            <a
+              href="/admin"
+              className={`${styles.bottomTab} ${isActive('/admin') ? styles.bottomTabActive : ''}`}
+            >
+              <span className={styles.bottomTabIcon}>🛡️</span>
+              <span className={styles.bottomTabLabel}>Admin</span>
+            </a>
+          </>
         ) : (
-          <a
-            href="/agent"
-            className={styles.bottomTab}
-          >
-            <span className={styles.bottomTabIcon}>📋</span>
-            <span className={styles.bottomTabLabel}>Script</span>
-          </a>
+          <>
+            <button
+              type="button"
+              onClick={handleOpenCallbackFromNav}
+              className={styles.bottomTab}
+            >
+              <span className={styles.bottomTabIcon}>🔍</span>
+              <span className={styles.bottomTabLabel}>Callback</span>
+            </button>
+            <button
+              type="button"
+              onClick={signOut}
+              className={styles.bottomTab}
+            >
+              <span className={styles.bottomTabIcon}>
+                <span className={styles.avatarSmall}>
+                  {profile?.full_name?.charAt(0)?.toUpperCase() || '?'}
+                </span>
+              </span>
+              <span className={styles.bottomTabLabel}>Sign Out</span>
+            </button>
+          </>
         )}
-        <button
-          onClick={canImpersonate ? () => setShowImpersonate(true) : signOut}
-          className={styles.bottomTab}
-        >
-          <span className={styles.bottomTabIcon}>
-            <span className={styles.avatarSmall}>
-              {profile?.full_name?.charAt(0)?.toUpperCase() || '?'}
-            </span>
-          </span>
-          <span className={styles.bottomTabLabel}>
-            {canImpersonate ? 'Switch' : 'Profile'}
-          </span>
-        </button>
       </nav>
 
       {/* Super Admin Agent Impersonation Modal */}

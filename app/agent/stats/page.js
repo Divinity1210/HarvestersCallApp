@@ -34,6 +34,13 @@ function StatsContent() {
   const [viewMode, setViewMode] = useState('table'); // 'table' or 'cards'
   const [copiedId, setCopiedId] = useState(null);
 
+  // Auto-select mobile-friendly card view on mobile screens
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      setViewMode('cards');
+    }
+  }, []);
+
   // Ref to scroll to roster
   const rosterRef = useRef(null);
 
@@ -988,9 +995,10 @@ function StatsContent() {
                                 color: '#93c5fd',
                                 background: 'rgba(59, 130, 246, 0.12)',
                                 border: '1px solid rgba(59, 130, 246, 0.3)',
-                                padding: '3px 8px',
+                                padding: '4px 10px',
                                 borderRadius: '6px',
                                 whiteSpace: 'nowrap',
+                                marginLeft: 'auto',
                               }}
                             >
                               ✏️ {isPositive ? 'Edit Feedback' : 'Log Feedback'}

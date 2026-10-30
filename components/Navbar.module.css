@@ -78,6 +78,46 @@
   border: 1px solid var(--border-subtle);
 }
 
+.logoImg {
+  height: 36px;
+  width: auto;
+  display: block;
+}
+
+.userInfoInteractive {
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.userInfoImpersonating {
+  border-color: rgba(245, 158, 11, 0.5) !important;
+  background: rgba(245, 158, 11, 0.12) !important;
+}
+
+.mobileSwitchBadge {
+  display: none;
+}
+
+.exitImpersonateBtn {
+  font-size: 11px !important;
+  padding: 4px 10px !important;
+  font-weight: 700 !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.exitTextShort {
+  display: none;
+}
+
+.logoutTextShort {
+  display: none;
+}
+
 .avatar {
   width: 32px;
   height: 32px;
@@ -130,8 +170,16 @@
 
 @media (max-width: 768px) {
   .navbar {
-    height: var(--navbar-mobile-height, 48px);
-    padding: 0 var(--space-4);
+    height: var(--navbar-mobile-height, 52px);
+    padding: 0 var(--space-3);
+  }
+
+  .logoImg {
+    height: 28px;
+  }
+
+  .navRight {
+    gap: var(--space-2);
   }
 
   .desktopLinks {
@@ -142,8 +190,41 @@
     display: none;
   }
 
-  .logoutBtn {
+  .mobileSwitchBadge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
+
+  .exitTextFull {
     display: none;
+  }
+
+  .exitTextShort {
+    display: inline;
+  }
+
+  .exitImpersonateBtn {
+    padding: 4px 8px !important;
+    min-height: 32px !important;
+  }
+
+  .logoutTextFull {
+    display: none;
+  }
+
+  .logoutTextShort {
+    display: inline;
+    font-size: 14px;
+  }
+
+  .logoutBtn {
+    display: inline-flex;
+    padding: 4px 8px !important;
+    min-height: 32px !important;
   }
 
   .userInfo {
@@ -152,10 +233,17 @@
     padding: 0;
   }
 
+  .userInfoInteractive {
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(168, 85, 247, 0.45);
+    background: rgba(168, 85, 247, 0.14);
+  }
+
   .avatar {
-    width: 28px;
-    height: 28px;
-    font-size: var(--text-xs);
+    width: 26px;
+    height: 26px;
+    font-size: 11px;
   }
 
   /* Bottom navigation bar */

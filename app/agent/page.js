@@ -164,9 +164,18 @@ export default function AgentDashboard() {
     return () => clearInterval(interval);
   }, [profile?.id]);
 
-  // Clean up device timer on unmount
+  // Clean up device timer on unmount & listen for mobile navbar callback shortcut
   useEffect(() => {
+    const handleOpenCallback = () => setShowCallbackModal(true);
+    window.addEventListener('harvesters:open-callback', handleOpenCallback);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('callback') === '1') {
+        setShowCallbackModal(true);
+      }
+    } catch {}
     return () => {
+      window.removeEventListener('harvesters:open-callback', handleOpenCallback);
       if (deviceTimerRef.current) clearInterval(deviceTimerRef.current);
     };
   }, []);
@@ -372,39 +381,39 @@ export default function AgentDashboard() {
     <div className={styles.workspace}>
       {/* Agent Stats & Campaign Bar */}
       <div className={styles.statsBar}>
-        <div className={styles.statsLeft}>
-          {campaigns.length > 1 ? (
-            <select
-              className={`form-select ${styles.campaignSelect}`}
-              value={selectedCampaign?.id || ''}
-              onChange={(e) => {
-                const c = campaigns.find(c => c.id === e.target.value);
-                setSelectedCampaign(c);
-                try {
-                  if (c) localStorage.setItem('harvesters_selected_campaign', c.id);
-                } catch {}
-                if (c) lead.restoreActiveLead(c.id);
-              }}
-              aria-label="Select Campaign"
-            >
-              {campaigns.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-          ) : (
-            <div className={styles.campaignName}>
-              <span className={styles.campaignDot}></span>
-              <span>{selectedCampaign?.name || 'No Active Campaign'}</span>
-            </div>
-          )}
-        </div>
-        <div className={styles.statsRight}>
+        <div className={styles.statsTopRow}>
+          <div className={styles.statsLeft}>
+            {campaigns.length > 1 ? (
+              <select
+                className={`form-select ${styles.campaignSelect}`}
+                value={selectedCampaign?.id || ''}
+                onChange={(e) => {
+                  const c = campaigns.find(c => c.id === e.target.value);
+                  setSelectedCampaign(c);
+                  try {
+                    if (c) localStorage.setItem('harvesters_selected_campaign', c.id);
+                  } catch {}
+                  if (c) lead.restoreActiveLead(c.id);
+                }}
+                aria-label="Select Campaign"
+              >
+                {campaigns.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            ) : (
+              <div className={styles.campaignName}>
+                <span className={styles.campaignDot}></span>
+                <span>{selectedCampaign?.name || 'No Active Campaign'}</span>
+              </div>
+            )}
+          </div>
+
           {/* Mode Switcher */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(255,255,255,0.06)', padding: '2px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+          <div className={styles.modeToggleGroup}>
             <button
               type="button"
-              className={`btn btn-sm ${callMode === 'twilio' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '11px', padding: '3px 8px', height: 'auto', borderRadius: '4px' }}
+              className={`btn btn-sm ${callMode === 'twilio' ? 'btn-primary' : 'btn-ghost'} ${styles.modeToggleBtn}`}
               onClick={() => handleSwitchMode('twilio')}
               title="Twilio WebRTC in-browser calling with AI recording & QA"
             >
@@ -412,14 +421,71 @@ export default function AgentDashboard() {
             </button>
             <button
               type="button"
-              className={`btn btn-sm ${callMode === 'device' ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '11px', padding: '3px 8px', height: 'auto', borderRadius: '4px' }}
+              className={`btn btn-sm ${callMode === 'device' ? 'btn-primary' : 'btn-ghost'} ${styles.modeToggleBtn}`}
               onClick={() => handleSwitchMode('device')}
               title="Mobile phone SIM calling (Free unlimited minutes)"
             >
-              📱 Mobile SIM
+              📱 SIM
             </button>
           </div>
+        </div>
+
+        <div className={styles.statsRight}>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setShowCallbackModal(true)}
+            title="Find an attendee who called you back"
+            style={{
+              fontSize: '12px',
+              padding: '4px 10px',
+              minHeight: '30px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid rgba(59, 130, 246, 0.45)',
+              background: 'rgba(59, 130, 246, 0.12)',
+              color: '#93c5fd',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontWeight: 600,
+              flexShrink: 0,
+            }}
+          >
+            <span>🔍</span>
+            <span>Callback</span>
+          </button>
+
+          {canImpersonate && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => setShowImpersonateModal(true)}
+              title="Super Admin: Impersonate or switch to any agent"
+              style={{
+                fontSize: '12px',
+                padding: '4px 10px',
+                minHeight: '30px',
+                borderRadius: 'var(--radius-md)',
+                border: isImpersonating
+                  ? '1px solid rgba(245, 158, 11, 0.5)'
+                  : '1px solid rgba(168, 85, 247, 0.5)',
+                background: isImpersonating
+                  ? 'rgba(245, 158, 11, 0.15)'
+                  : 'rgba(168, 85, 247, 0.15)',
+                color: isImpersonating ? '#fbbf24' : '#d8b4fe',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              <span>🎭</span>
+              <span>{isImpersonating ? `As: ${profile?.full_name?.split(' ')[0]}` : 'Impersonate'}</span>
+            </button>
+          )}
 
           {typeof selectedCampaign?.stats?.remaining === 'number' && (
             <div className={styles.statChip} title="Contacts in this campaign nobody has called yet">
@@ -435,62 +501,13 @@ export default function AgentDashboard() {
             <span className={styles.statChipLabel}>Connected</span>
             <span className={styles.statChipValue}>{agentStats.completedToday}</span>
           </div>
-          <div className={styles.statChip}>
+          <div className={`${styles.statChip} ${styles.hideChipOnMobile}`}>
             <span className={styles.statChipLabel}>Avg Time</span>
             <span className={styles.statChipValue}>
               {Math.floor(agentStats.avgDuration / 60)}:{(agentStats.avgDuration % 60).toString().padStart(2, '0')}
             </span>
           </div>
-          {canImpersonate && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => setShowImpersonateModal(true)}
-              title="Super Admin: Impersonate or switch to any agent"
-              style={{
-                fontSize: '12px',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-md)',
-                border: isImpersonating
-                  ? '1px solid rgba(245, 158, 11, 0.5)'
-                  : '1px solid rgba(168, 85, 247, 0.5)',
-                background: isImpersonating
-                  ? 'rgba(245, 158, 11, 0.15)'
-                  : 'rgba(168, 85, 247, 0.15)',
-                color: isImpersonating ? '#fbbf24' : '#d8b4fe',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontWeight: 600,
-              }}
-            >
-              <span>🎭</span>
-              <span>{isImpersonating ? `As: ${profile?.full_name?.split(' ')[0]}` : 'Impersonate'}</span>
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => setShowCallbackModal(true)}
-            title="Find an attendee who called you back"
-            style={{
-              fontSize: '12px',
-              padding: '4px 10px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid rgba(59, 130, 246, 0.45)',
-              background: 'rgba(59, 130, 246, 0.12)',
-              color: '#93c5fd',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontWeight: 600,
-            }}
-          >
-            <span>🔍</span>
-            <span>Callback</span>
-          </button>
+
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -499,18 +516,20 @@ export default function AgentDashboard() {
             style={{
               fontSize: '12px',
               padding: '4px 10px',
+              minHeight: '30px',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border-subtle)',
               background: 'rgba(255, 255, 255, 0.05)',
               color: 'var(--text-secondary)',
               cursor: 'pointer',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
               gap: '4px',
+              flexShrink: 0,
             }}
           >
             <span>🔄</span>
-            <span>Reload</span>
+            <span className={styles.reloadLabelText}>Reload</span>
           </button>
         </div>
       </div>
@@ -665,6 +684,33 @@ export default function AgentDashboard() {
             formattedDeviceDuration={formattedDeviceDuration}
             onOpenSMSModal={() => setShowSMSModal(true)}
           />
+
+          {lead.currentLead && (
+            <div className={styles.mobileQuickNavRow}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ flex: 1, minHeight: 42, fontWeight: 600 }}
+                onClick={() => {
+                  setShowResults(false);
+                  setMobileTab('script');
+                }}
+              >
+                📋 View Call Script
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={{ flex: 1, minHeight: 42, fontWeight: 700 }}
+                onClick={() => {
+                  setShowResults(true);
+                  setMobileTab('results');
+                }}
+              >
+                📝 Log Feedback
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

@@ -836,7 +836,7 @@ img {
   transform: translateX(-50%) scale(1);
 }
 
-/* --- Mobile Utility Classes --- */
+/* --- Mobile Utility Classes & Global Mobile-First Enhancements --- */
 .mobile-only {
   display: none;
 }
@@ -846,6 +846,10 @@ img {
 }
 
 @media (max-width: 768px) {
+  body {
+    padding-bottom: calc(var(--bottom-bar-height, 64px) + env(safe-area-inset-bottom, 0px));
+  }
+
   .mobile-only {
     display: contents;
   }
@@ -856,6 +860,76 @@ img {
 
   .mobile-full-width {
     width: 100%;
+  }
+
+  /* Prevent iOS Safari auto-zoom on form inputs (must be >= 16px) & ensure 44px touch targets */
+  .form-input,
+  .form-textarea,
+  .form-select {
+    font-size: 16px;
+    min-height: 44px;
+  }
+
+  /* Touch-friendly buttons */
+  .btn {
+    min-height: 40px;
+  }
+
+  .btn-sm {
+    min-height: 36px;
+    padding: 6px 12px;
+  }
+
+  /* Keep toasts above the mobile bottom navigation bar and within screen bounds */
+  .toast-container {
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: calc(var(--bottom-bar-height, 64px) + env(safe-area-inset-bottom, 0px) + var(--space-3));
+  }
+
+  .toast {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .stat-card {
+    padding: var(--space-4);
+  }
+
+  .stat-value {
+    font-size: var(--text-2xl);
+  }
+}
+
+@media (max-width: 640px) {
+  /* Native-style bottom-sheet modals on mobile phones */
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal-content {
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: 92dvh !important;
+    padding: var(--space-5) var(--space-4) calc(var(--space-6) + env(safe-area-inset-bottom, 0px));
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-bottom: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-header {
+    position: sticky;
+    top: 0;
+    background: var(--surface-card-solid);
+    z-index: 5;
+    padding-bottom: var(--space-3);
+    margin-bottom: var(--space-4);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .modal-title {
+    font-size: var(--text-lg);
   }
 }
 
