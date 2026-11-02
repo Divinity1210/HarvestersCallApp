@@ -1,8 +1,15 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import styles from './ScriptDisplay.module.css';
 import { parseNextSteps } from '@/lib/nextSteps';
+import {
+  formatWhatsAppNumber,
+  formatCarrierSmsNumber,
+  buildCarrierSmsHref,
+  renderCampaignMessage,
+  FALLBACK_CAMPAIGN_MESSAGE,
+} from './SendSMSModal';
 
 /**
  * ScriptDisplay — Interactive, dynamic call script reader for volunteers.
@@ -10,6 +17,9 @@ import { parseNextSteps } from '@/lib/nextSteps';
  */
 export default function ScriptDisplay({
   scriptTemplate,
+  smsTemplate,
+  campaignId,
+  phoneNumber,
   nextStepsOptions = [],
   attendeeName,
   agentName,
@@ -22,6 +32,35 @@ export default function ScriptDisplay({
 }) {
   const safeAnswers = answers || {};
   const safeActions = Array.isArray(actions) ? actions : [];
+  const storageKey = `harvesters_custom_msg_tpl_${campaignId || 'default'}`;
+
+  const computeMsg = () => {
+    let rawTpl = (smsTemplate && smsTemplate.trim()) || FALLBACK_CAMPAIGN_MESSAGE;
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem(storageKey);
+        if (saved && saved.trim()) rawTpl = saved.trim();
+      }
+    } catch {}
+    return renderCampaignMessage(rawTpl, { attendeeName, agentName });
+  };
+
+  const [msgText, setMsgText] = useState(computeMsg);
+
+  useEffect(() => {
+    setMsgText(computeMsg());
+  }, [attendeeName, agentName, smsTemplate, campaignId]);
+
+  useEffect(() => {
+    const onTplUpdated = () => setMsgText(computeMsg());
+    window.addEventListener('harvesters:msg-template-updated', onTplUpdated);
+    return () => window.removeEventListener('harvesters:msg-template-updated', onTplUpdated);
+  }, [attendeeName, agentName, smsTemplate, campaignId]);
+
+  const waNumber = formatWhatsAppNumber(phoneNumber);
+  const smsPhone = formatCarrierSmsNumber(phoneNumber);
+  const waHref = waNumber ? `https://wa.me/${waNumber}?text=${encodeURIComponent(msgText.trim())}` : '#';
+  const carrierSmsHref = buildCarrierSmsHref(phoneNumber, msgText.trim());
 
   // Parse structured questions & actions from campaign configuration
   const groups = useMemo(() => {
@@ -244,31 +283,91 @@ export default function ScriptDisplay({
                   </div>
                 )}
 
-                {/* If this is the registration / follow-up section, render the 1-click SMS dispatch card! */}
+                {/* If this is the registration / follow-up section, render the 1-click WhatsApp & SMS dispatch card! */}
                 {isClosingOrRegSection && (
                   <div className={styles.regCtaBox}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span className={styles.regCtaTitle}>✉️ Official Registration SMS</span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Twilio: +44 7897 011851</span>
-                    </div>
-
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center', marginTop: '4px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                      <span className={styles.regCtaTitle}>💬 Send Follow-Up via WhatsApp or Phone SMS</span>
                       {onOpenSMSModal && (
                         <button
                           type="button"
-                          className="btn btn-primary btn-sm"
+                          className="btn btn-ghost btn-sm"
                           onClick={onOpenSMSModal}
+                          style={{ fontSize: '11px', padding: '2px 8px', minHeight: '24px', color: '#93c5fd', border: '1px solid rgba(59, 130, 246, 0.35)' }}
+                        >
+                          ✏️ Edit Message Contents
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', alignItems: 'center', marginTop: '6px' }}>
+                      {waNumber && (
+                        <a
+                          href={waHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-success btn-sm"
+                          onClick={() => {
+                            if (onToggleAction && !safeActions.includes('Registration link sent via SMS')) {
+                              onToggleAction('Registration link sent via SMS');
+                            }
+                          }}
                           style={{
+                            textDecoration: 'none',
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '6px',
                             padding: '6px 14px',
                             fontSize: 'var(--text-xs)',
-                            fontWeight: 700
+                            fontWeight: 700,
                           }}
                         >
-                          <span>🚀</span>
-                          <span>Send Registration Link via SMS</span>
+                          <span>💬</span>
+                          <span>Send on WhatsApp</span>
+                        </a>
+                      )}
+
+                      {smsPhone && (
+                        <a
+                          href={carrierSmsHref}
+                          className="btn btn-primary btn-sm"
+                          onClick={() => {
+                            if (onToggleAction && !safeActions.includes('Registration link sent via SMS')) {
+                              onToggleAction('Registration link sent via SMS');
+                            }
+                          }}
+                          style={{
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 14px',
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 700,
+                            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                          }}
+                        >
+                          <span>📱</span>
+                          <span>Send Phone SMS (If Not on WhatsApp)</span>
+                        </a>
+                      )}
+
+                      {onOpenSMSModal && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={onOpenSMSModal}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '6px 12px',
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <span>✏️</span>
+                          <span>Edit / Church SMS</span>
                         </button>
                       )}
 

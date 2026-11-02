@@ -629,7 +629,7 @@ export default function CampaignsPage() {
               <div className="form-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>
-                    ✉️ Campaign SMS Message (Sent During Call &amp; SMS Blast)
+                    💬 / ✉️ Campaign WhatsApp &amp; SMS Message (Sent During Call &amp; SMS Blast)
                   </label>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {['{{first_name}}', '{{attendee_name}}', '{{agent_name}}'].map(token => (
@@ -1050,7 +1050,7 @@ export default function CampaignsPage() {
               <div className="form-group">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                   <label className="form-label" style={{ marginBottom: 0 }}>
-                    ✉️ Campaign SMS Message (Sent During Call &amp; SMS Blast)
+                    💬 / ✉️ Campaign WhatsApp &amp; SMS Message (Sent During Call &amp; SMS Blast)
                   </label>
                   <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     {['{{first_name}}', '{{attendee_name}}', '{{agent_name}}'].map(token => (

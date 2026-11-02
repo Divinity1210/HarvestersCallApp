@@ -640,6 +640,9 @@ export default function AgentDashboard() {
           ) : (
             <ScriptDisplay
               scriptTemplate={selectedCampaign?.script_template}
+              smsTemplate={selectedCampaign?.sms_template}
+              campaignId={selectedCampaign?.id}
+              phoneNumber={lead.currentLead?.phone_number}
               nextStepsOptions={selectedCampaign?.next_steps_options || []}
               attendeeName={lead.currentLead?.full_name}
               agentName={profile?.full_name}
@@ -674,6 +677,7 @@ export default function AgentDashboard() {
             onToggleMute={call.toggleMute}
             onSkip={handleSkip}
             hasLead={!!lead.currentLead}
+            campaignId={selectedCampaign?.id}
             attendeeName={lead.currentLead?.full_name}
             agentName={profile?.full_name}
             phoneNumber={lead.currentLead?.phone_number}
@@ -684,6 +688,11 @@ export default function AgentDashboard() {
             formattedDeviceDuration={formattedDeviceDuration}
             smsTemplate={selectedCampaign?.sms_template}
             onOpenSMSModal={() => setShowSMSModal(true)}
+            onMessageSent={() => {
+              if (!inCallActions.includes('Registration link sent via SMS')) {
+                handleToggleInCallAction('Registration link sent via SMS');
+              }
+            }}
           />
 
           {lead.currentLead && (
@@ -780,16 +789,22 @@ export default function AgentDashboard() {
         }}
       />
 
-      {/* Official Twilio SMS Modal */}
+      {/* WhatsApp & Carrier/Church SMS Composer Modal */}
       <SendSMSModal
         isOpen={showSMSModal}
         onClose={() => setShowSMSModal(false)}
         leadId={lead.currentLead?.id}
+        campaignId={selectedCampaign?.id}
         attendeeName={lead.currentLead?.full_name}
+        phoneNumber={lead.currentLead?.phone_number}
         agentName={profile?.full_name}
         senderPhone="NLP UK"
         smsTemplate={selectedCampaign?.sms_template}
-        onSent={() => handleToggleInCallAction('Registration link sent via SMS')}
+        onSent={() => {
+          if (!inCallActions.includes('Registration link sent via SMS')) {
+            handleToggleInCallAction('Registration link sent via SMS');
+          }
+        }}
       />
 
       {/* Callback & Attendee Search Modal */}

@@ -1,13 +1,20 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import {
+  formatWhatsAppNumber,
+  formatCarrierSmsNumber,
+  buildCarrierSmsHref,
+  renderCampaignMessage,
+  FALLBACK_CAMPAIGN_MESSAGE,
+} from './SendSMSModal';
 import styles from './CallDialer.module.css';
 
 /**
  * CallDialer — WebRTC and Device/SIM call control panel.
  * Supports:
  * 1. 'device' mode: Direct mobile phone (SIM / Cellular) dialing via tel: link,
- *    WhatsApp integration, native timers, and manual outcome/notes entry (0 Twilio credits needed).
+ *    WhatsApp & native Carrier SMS integration, native timers, and manual outcome/notes entry (0 Twilio credits needed).
  * 2. 'twilio' mode: In-browser WebRTC softphone with audio recording & automated AI QA.
  */
 export default function CallDialer({
@@ -25,6 +32,7 @@ export default function CallDialer({
   onToggleMute,
   onSkip,
   hasLead,
+  campaignId,
   attendeeName,
   agentName,
   phoneNumber,
@@ -35,6 +43,7 @@ export default function CallDialer({
   formattedDeviceDuration,
   smsTemplate,
   onOpenSMSModal,
+  onMessageSent,
 }) {
   // Auto-init the Twilio device ONLY when in twilio mode
   useEffect(() => {
@@ -43,32 +52,63 @@ export default function CallDialer({
     }
   }, [callMode, onInitDevice]);
 
-  // Format WhatsApp phone number
-  let waNumber = (phoneNumber || '').replace(/[^0-9]/g, '');
-  if (waNumber.startsWith('0') && waNumber.length === 11) {
-    waNumber = '44' + waNumber.slice(1);
-  }
+  const storageKey = `harvesters_custom_msg_tpl_${campaignId || 'default'}`;
 
-  // Format SMS phone number
-  let smsPhone = (phoneNumber || '').replace(/[^0-9+]/g, '');
-  if (smsPhone.startsWith('0') && smsPhone.length === 11) {
-    smsPhone = '+44' + smsPhone.slice(1);
-  } else if (!smsPhone.startsWith('+') && smsPhone.startsWith('44')) {
-    smsPhone = '+' + smsPhone;
-  }
+  const computeDefaultMessage = () => {
+    let rawTpl = (smsTemplate && smsTemplate.trim()) || FALLBACK_CAMPAIGN_MESSAGE;
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem(storageKey);
+        if (saved && saved.trim()) rawTpl = saved.trim();
+      }
+    } catch {}
+    return renderCampaignMessage(rawTpl, { attendeeName, agentName });
+  };
 
-  const attendeeFirstName = attendeeName ? attendeeName.trim().split(/\s+/)[0] : 'there';
-  const fullName = attendeeName ? attendeeName.trim() : attendeeFirstName;
-  const callerName = agentName ? agentName.trim() : 'the team';
-  const rawTemplate =
-    (smsTemplate && smsTemplate.trim()) ||
-    'Hi {{first_name}}, this is {{agent_name}} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (21 Nov 2026, 2:00 PM at The Hope Centre, S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield. Looking forward to welcoming you!';
-  const defaultMessage = String(rawTemplate)
-    .replace(/\{\{\s*first_name\s*\}\}/gi, attendeeFirstName)
-    .replace(/\{\{\s*attendee_first_name\s*\}\}/gi, attendeeFirstName)
-    .replace(/\{\{\s*full_name\s*\}\}/gi, fullName)
-    .replace(/\{\{\s*attendee_name\s*\}\}/gi, fullName)
-    .replace(/\{\{\s*agent_name\s*\}\}/gi, callerName);
+  const [customMessage, setCustomMessage] = useState(computeDefaultMessage);
+  const [editingInlineMsg, setEditingInlineMsg] = useState(false);
+  const [inlineSavedMsg, setInlineSavedMsg] = useState('');
+
+  useEffect(() => {
+    setCustomMessage(computeDefaultMessage());
+  }, [attendeeName, agentName, smsTemplate, campaignId]);
+
+  useEffect(() => {
+    const onTplUpdated = () => setCustomMessage(computeDefaultMessage());
+    window.addEventListener('harvesters:msg-template-updated', onTplUpdated);
+    return () => window.removeEventListener('harvesters:msg-template-updated', onTplUpdated);
+  }, [attendeeName, agentName, smsTemplate, campaignId]);
+
+  const waNumber = formatWhatsAppNumber(phoneNumber);
+  const smsPhone = formatCarrierSmsNumber(phoneNumber);
+  const waHref = waNumber
+    ? `https://wa.me/${waNumber}?text=${encodeURIComponent(customMessage.trim())}`
+    : '#';
+  const carrierSmsHref = buildCarrierSmsHref(phoneNumber, customMessage.trim());
+
+  const handleSaveInlineDefault = () => {
+    const attendeeFirstName = attendeeName ? attendeeName.trim().split(/\s+/)[0] : '';
+    let generalized = customMessage.trim();
+    if (attendeeFirstName && attendeeFirstName.length > 1) {
+      const escaped = attendeeFirstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      generalized = generalized.replace(new RegExp(`\\b${escaped}\\b`, 'i'), '{{first_name}}');
+    }
+    try {
+      localStorage.setItem(storageKey, generalized);
+      setInlineSavedMsg('📌 Saved for your next calls!');
+      setTimeout(() => setInlineSavedMsg(''), 2500);
+    } catch {}
+  };
+
+  const handleResetInlineDefault = () => {
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {}
+    const baseTpl = (smsTemplate && smsTemplate.trim()) || FALLBACK_CAMPAIGN_MESSAGE;
+    setCustomMessage(renderCampaignMessage(baseTpl, { attendeeName, agentName }));
+    setInlineSavedMsg('↺ Reset to campaign default');
+    setTimeout(() => setInlineSavedMsg(''), 2500);
+  };
 
   // Twilio call state flags
   const isIdle = callState === 'idle';
@@ -148,156 +188,47 @@ export default function CallDialer({
         {callMode === 'device' ? (
           // Device / SIM Actions
           !isInDeviceCall ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width: '100%' }}>
-              <a
-                href={phoneNumber ? `tel:${phoneNumber}` : '#'}
-                className={`btn btn-success ${styles.dialBtn}`}
-                onClick={onDeviceCallStarted}
-                style={{
-                  pointerEvents: (!hasLead || !phoneNumber) ? 'none' : 'auto',
-                  opacity: (!hasLead || !phoneNumber) ? 0.5 : 1,
-                  textDecoration: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                aria-label="Call attendee via phone dialer"
-              >
-                <span className={styles.btnIcon}>📞</span>
-                <span>Call via Mobile (SIM / Cellular)</span>
-              </a>
-
-              {hasLead && (
-                <div style={{ display: 'grid', gridTemplateColumns: waNumber ? '1fr 1fr' : '1fr', gap: 'var(--space-2)' }}>
-                  {waNumber && (
-                    <a
-                      href={`https://wa.me/${waNumber}?text=${encodeURIComponent(defaultMessage)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary"
-                      onClick={onDeviceCallStarted}
-                      style={{
-                        textDecoration: 'none',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 'var(--space-2)',
-                        padding: 'var(--space-3)',
-                        fontSize: 'var(--text-sm)'
-                      }}
-                      aria-label="Open WhatsApp conversation"
-                    >
-                      <span>💬</span>
-                      <span>WhatsApp</span>
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      if (onOpenSMSModal) {
-                        onOpenSMSModal();
-                      }
-                    }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 'var(--space-2)',
-                      padding: 'var(--space-3)',
-                      fontSize: 'var(--text-sm)',
-                      borderColor: 'rgba(59, 130, 246, 0.4)',
-                      color: '#60a5fa',
-                      background: 'transparent',
-                      cursor: 'pointer'
-                    }}
-                    aria-label="Send SMS via Church Number"
-                  >
-                    <span>✉️</span>
-                    <span>Send SMS</span>
-                  </button>
-                </div>
-              )}
-            </div>
+            <a
+              href={phoneNumber ? `tel:${phoneNumber}` : '#'}
+              className={`btn btn-success ${styles.dialBtn}`}
+              onClick={onDeviceCallStarted}
+              style={{
+                pointerEvents: (!hasLead || !phoneNumber) ? 'none' : 'auto',
+                opacity: (!hasLead || !phoneNumber) ? 0.5 : 1,
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label="Call attendee via phone dialer"
+            >
+              <span className={styles.btnIcon}>📞</span>
+              <span>Call via Mobile (SIM / Cellular)</span>
+            </a>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', width: '100%' }}>
-              <button
-                className={`btn btn-success ${styles.dialBtn}`}
-                onClick={onDeviceCallFinished}
-                style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)' }}
-                aria-label="Finish call and log outcome"
-              >
-                <span className={styles.btnIcon}>✅</span>
-                <span>Call Finished — Log Notes & Outcome</span>
-              </button>
-            </div>
+            <button
+              className={`btn btn-success ${styles.dialBtn}`}
+              onClick={onDeviceCallFinished}
+              style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)' }}
+              aria-label="Finish call and log outcome"
+            >
+              <span className={styles.btnIcon}>✅</span>
+              <span>Call Finished — Log Notes &amp; Outcome</span>
+            </button>
           )
         ) : (
           // Twilio Actions
           <>
             {isIdle && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width: '100%' }}>
-                <button
-                  className={`btn btn-success ${styles.dialBtn}`}
-                  onClick={onStartCall}
-                  disabled={!deviceReady || !hasLead}
-                  aria-label="Start Call"
-                >
-                  <span className={styles.btnIcon}>📞</span>
-                  <span>Start WebRTC Call</span>
-                </button>
-
-                {hasLead && (
-                  <div style={{ display: 'grid', gridTemplateColumns: waNumber ? '1fr 1fr' : '1fr', gap: 'var(--space-2)' }}>
-                    {waNumber && (
-                      <a
-                        href={`https://wa.me/${waNumber}?text=${encodeURIComponent(defaultMessage)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn btn-secondary"
-                        style={{
-                          textDecoration: 'none',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 'var(--space-2)',
-                          padding: 'var(--space-2)',
-                          fontSize: 'var(--text-xs)'
-                        }}
-                        aria-label="Open WhatsApp conversation"
-                      >
-                        <span>💬</span>
-                        <span>WhatsApp</span>
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        if (onOpenSMSModal) {
-                          onOpenSMSModal();
-                        }
-                      }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 'var(--space-2)',
-                        padding: 'var(--space-2)',
-                        fontSize: 'var(--text-xs)',
-                        borderColor: 'rgba(59, 130, 246, 0.4)',
-                        color: '#60a5fa',
-                        background: 'transparent',
-                        cursor: 'pointer'
-                      }}
-                      aria-label="Send SMS via Church Number"
-                    >
-                      <span>✉️</span>
-                      <span>Send SMS</span>
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                className={`btn btn-success ${styles.dialBtn}`}
+                onClick={onStartCall}
+                disabled={!deviceReady || !hasLead}
+                aria-label="Start Call"
+              >
+                <span className={styles.btnIcon}>📞</span>
+                <span>Start WebRTC Call</span>
+              </button>
             )}
 
             {(isConnecting || isRinging) && (
@@ -347,6 +278,159 @@ export default function CallDialer({
               </div>
             )}
           </>
+        )}
+
+        {/* Carrier WhatsApp & Phone SMS Actions (Always available when an attendee is loaded) */}
+        {hasLead && (
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              padding: '10px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--border-subtle)',
+              marginTop: '2px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                💬 WhatsApp or 📱 Phone SMS (Carrier)
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: '11px', padding: '2px 8px', minHeight: '24px', color: '#93c5fd', border: '1px solid rgba(59, 130, 246, 0.35)' }}
+                onClick={() => setEditingInlineMsg(v => !v)}
+              >
+                {editingInlineMsg ? '▲ Hide Editor' : '✏️ Edit Message'}
+              </button>
+            </div>
+
+            {editingInlineMsg && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                <textarea
+                  className="form-textarea"
+                  rows={4}
+                  value={customMessage}
+                  onChange={e => setCustomMessage(e.target.value)}
+                  style={{ fontSize: '13px', padding: '8px 10px', minHeight: '84px' }}
+                  placeholder="Edit WhatsApp / SMS message contents..."
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                  <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                    {customMessage.length} chars • Updates WhatsApp &amp; SMS buttons live
+                  </span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: '10px', padding: '2px 6px', minHeight: '22px', border: '1px solid var(--border-subtle)' }}
+                      onClick={handleSaveInlineDefault}
+                    >
+                      📌 Keep for Next Calls
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: '10px', padding: '2px 6px', minHeight: '22px', border: '1px solid var(--border-subtle)' }}
+                      onClick={handleResetInlineDefault}
+                    >
+                      ↺ Reset
+                    </button>
+                  </div>
+                </div>
+                {inlineSavedMsg && (
+                  <div style={{ fontSize: '11px', color: '#34d399', fontWeight: 600 }}>
+                    {inlineSavedMsg}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary"
+                onClick={() => {
+                  if (callMode === 'device' && !isInDeviceCall && onDeviceCallStarted) {
+                    onDeviceCallStarted();
+                  }
+                  if (onMessageSent) onMessageSent('WhatsApp');
+                }}
+                style={{
+                  pointerEvents: (!waNumber || !customMessage.trim()) ? 'none' : 'auto',
+                  opacity: (!waNumber || !customMessage.trim()) ? 0.5 : 1,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '2px',
+                  padding: '8px 10px',
+                  minHeight: '46px',
+                  borderColor: 'rgba(16, 185, 129, 0.45)',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  color: '#34d399',
+                }}
+                aria-label="Send message on WhatsApp"
+              >
+                <span style={{ fontWeight: 700, fontSize: '13px' }}>💬 WhatsApp</span>
+                <span style={{ fontSize: '10px', opacity: 0.85, fontWeight: 500 }}>Send on WhatsApp</span>
+              </a>
+
+              <a
+                href={carrierSmsHref}
+                className="btn btn-secondary"
+                onClick={() => {
+                  if (callMode === 'device' && !isInDeviceCall && onDeviceCallStarted) {
+                    onDeviceCallStarted();
+                  }
+                  if (onMessageSent) onMessageSent('Phone SMS');
+                }}
+                style={{
+                  pointerEvents: (!smsPhone || !customMessage.trim()) ? 'none' : 'auto',
+                  opacity: (!smsPhone || !customMessage.trim()) ? 0.5 : 1,
+                  textDecoration: 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '2px',
+                  padding: '8px 10px',
+                  minHeight: '46px',
+                  borderColor: 'rgba(59, 130, 246, 0.45)',
+                  background: 'rgba(59, 130, 246, 0.12)',
+                  color: '#93c5fd',
+                }}
+                aria-label="Send SMS via your phone carrier if number is not on WhatsApp"
+              >
+                <span style={{ fontWeight: 700, fontSize: '13px' }}>📱 Phone SMS</span>
+                <span style={{ fontSize: '10px', opacity: 0.85, fontWeight: 500 }}>If not on WhatsApp</span>
+              </a>
+            </div>
+
+            {onOpenSMSModal && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={onOpenSMSModal}
+                style={{
+                  fontSize: '11px',
+                  padding: '4px 8px',
+                  minHeight: '28px',
+                  color: 'var(--text-secondary)',
+                  border: '1px dashed var(--border-subtle)',
+                  width: '100%',
+                }}
+              >
+                ✉️ Full Message Composer / Official Church SMS (NLP UK)
+              </button>
+            )}
+          </div>
         )}
       </div>
 
