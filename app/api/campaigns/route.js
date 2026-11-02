@@ -9,7 +9,7 @@ export async function GET(request) {
   try {
     const rows = await query(
       `SELECT 
-        c.id, c.name, c.description, c.script_template, 
+        c.id, c.name, c.description, c.script_template, c.sms_template,
         c.next_steps_options, c.consent_message, c.consent_mode, 
         c.status, c.retention_days, c.call_mode, c.created_at, c.updated_at,
         COUNT(l.id)::int as total_leads,
@@ -89,6 +89,8 @@ export async function POST(request) {
       description = '',
       script_template = '',
       scriptTemplate,
+      sms_template = '',
+      smsTemplate,
       next_steps_options = [],
       nextStepsOptions,
       consent_message = 'This call may be recorded for quality purposes.',
@@ -107,6 +109,7 @@ export async function POST(request) {
     }
 
     const finalScript = script_template || scriptTemplate || '';
+    const finalSmsTemplate = (sms_template ?? smsTemplate ?? '').trim();
     const rawOptions = next_steps_options.length ? next_steps_options : nextStepsOptions;
     const finalOptions = Array.isArray(rawOptions)
       ? rawOptions
@@ -119,14 +122,15 @@ export async function POST(request) {
 
     const rows = await query(
       `INSERT INTO campaigns (
-        name, description, script_template, next_steps_options,
+        name, description, script_template, sms_template, next_steps_options,
         consent_message, consent_mode, retention_days, call_mode, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
       RETURNING *`,
       [
         finalName,
         description,
         finalScript,
+        finalSmsTemplate,
         JSON.stringify(finalOptions),
         finalConsentMsg,
         finalConsentMode,

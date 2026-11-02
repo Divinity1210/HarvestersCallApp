@@ -32,12 +32,15 @@ export default function CampaignsPage() {
   const [aiMessage, setAiMessage] = useState('');
   const fileInputRef = useRef(null);
 
+  const DEFAULT_CAMPAIGN_SMS = 'Hi {{first_name}}, here is your registration link for NLP Night of Worship Sheffield (21 Nov 2026, 2pm, Hope Centre S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield';
+
   // Form state
   const [form, setForm] = useState({
     name: '',
     description: '',
     callMode: 'device', // 'device' (Volunteer Mobile / SIM) | 'twilio' (Twilio WebRTC)
     scriptTemplate: `## Introduction\nSAY: Hello, good day! Am I speaking with **{{attendee_name}}**?\nSAY: My name is **{{agent_name}}** and I am calling from Harvesters International Christian Centre.\nSAY: I am calling to follow up on your attendance at the Next Level Prayer Conference.\n\n## Experience Check\nASK: How was your experience at the conference?\nNOTE: Listen carefully and note any testimony or positive feedback.\n\n## Testimony\nASK: Did anything significant happen to you during the conference? Any testimony you'd like to share?\nNOTE: If they share a testimony, listen fully and acknowledge it warmly.\nSAY: That is wonderful! Praise God!\n\n## Next Steps\nSAY: We have some exciting opportunities for you to continue growing in your faith.\nASK: Would you be interested in any of the following?\nACTION: Read through the Next Steps options and note which ones the attendee agrees to.\n\n## Closing\nSAY: Thank you so much for your time, {{attendee_name}}. God bless you!\nSAY: We look forward to seeing you at church.`,
+    smsTemplate: DEFAULT_CAMPAIGN_SMS,
     nextStepsOptions: DEFAULT_NEXT_STEPS.join('\n'),
     consentMessage: 'This call may be recorded for quality purposes.',
     consentMode: 'script', // 'whisper' | 'script' | 'none'
@@ -117,6 +120,7 @@ export default function CampaignsPage() {
           description: form.description,
           call_mode: form.callMode || 'device',
           script_template: form.scriptTemplate,
+          sms_template: form.smsTemplate || '',
           next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
           consent_message: form.consentMessage,
           consent_mode: form.consentMode,
@@ -130,7 +134,7 @@ export default function CampaignsPage() {
       } else {
         setShowCreate(false);
         fetchCampaigns();
-        setForm(prev => ({ ...prev, name: '', description: '', callMode: 'device' }));
+        setForm(prev => ({ ...prev, name: '', description: '', callMode: 'device', smsTemplate: DEFAULT_CAMPAIGN_SMS }));
       }
     } catch (err) {
       console.error('Unexpected error:', err);
@@ -164,6 +168,7 @@ export default function CampaignsPage() {
       description: campaign.description || '',
       callMode: campaign.call_mode || 'device',
       scriptTemplate: campaign.script_template || '',
+      smsTemplate: campaign.sms_template || DEFAULT_CAMPAIGN_SMS,
       nextStepsOptions: (campaign.next_steps_options || []).join('\n'),
       consentMessage: campaign.consent_message || '',
       consentMode: campaign.consent_mode || 'script',
@@ -184,6 +189,7 @@ export default function CampaignsPage() {
         description: form.description,
         call_mode: form.callMode || 'device',
         script_template: form.scriptTemplate,
+        sms_template: form.smsTemplate || '',
         next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
         consent_message: form.consentMessage,
         consent_mode: form.consentMode,
@@ -318,6 +324,7 @@ export default function CampaignsPage() {
               name: '', description: '',
               callMode: 'device',
               scriptTemplate: form.scriptTemplate,
+              smsTemplate: form.smsTemplate || DEFAULT_CAMPAIGN_SMS,
               nextStepsOptions: form.nextStepsOptions,
               consentMessage: form.consentMessage,
               consentMode: 'script',
@@ -617,6 +624,59 @@ export default function CampaignsPage() {
                 value={form.nextStepsOptions}
                 onChange={v => setForm(p => ({ ...p, nextStepsOptions: v }))}
               />
+
+              {/* Campaign SMS Message Template */}
+              <div className="form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>
+                    ✉️ Campaign SMS Message (Sent During Call &amp; SMS Blast)
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {['{{first_name}}', '{{attendee_name}}', '{{agent_name}}'].map(token => (
+                      <button
+                        key={token}
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '11px', padding: '2px 8px', minHeight: '26px', border: '1px solid var(--border-subtle)' }}
+                        onClick={() => setForm(p => ({ ...p, smsTemplate: `${(p.smsTemplate || '').trim()} ${token}`.trim() }))}
+                      >
+                        + {token}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <textarea
+                  className="form-textarea"
+                  rows={4}
+                  maxLength={320}
+                  value={form.smsTemplate}
+                  onChange={e => setForm(p => ({ ...p, smsTemplate: e.target.value }))}
+                  placeholder="Hi {{first_name}}, here is your registration link..."
+                />
+                {(() => {
+                  const preview = String(form.smsTemplate || '')
+                    .replace(/\{\{\s*first_name\s*\}\}/gi, 'Ojewande')
+                    .replace(/\{\{\s*attendee_first_name\s*\}\}/gi, 'Ojewande')
+                    .replace(/\{\{\s*full_name\s*\}\}/gi, 'Ojewande Olawumi')
+                    .replace(/\{\{\s*attendee_name\s*\}\}/gi, 'Ojewande Olawumi')
+                    .replace(/\{\{\s*agent_name\s*\}\}/gi, 'Sarah');
+                  const len = preview.length;
+                  const segs = Math.max(1, Math.ceil(len / 160));
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>
+                      <span>
+                        Preview length: <strong>{len}</strong> / 320 chars ({segs} SMS segment{segs > 1 ? 's' : ''})
+                        {len > 0 && len <= 160 && (
+                          <span style={{ color: 'var(--color-success, #22c55e)', marginLeft: 6, fontWeight: 600 }}>
+                            • 1 Page (Lowest Cost)
+                          </span>
+                        )}
+                      </span>
+                      <span>Sender ID: <strong>NLP UK</strong></span>
+                    </div>
+                  );
+                })()}
+              </div>
 
               <div className="form-group">
                 <label className="form-label">Consent Message</label>
@@ -985,6 +1045,102 @@ export default function CampaignsPage() {
                 value={form.nextStepsOptions}
                 onChange={v => setForm(p => ({ ...p, nextStepsOptions: v }))}
               />
+
+              {/* Campaign SMS Message Template */}
+              <div className="form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>
+                    ✉️ Campaign SMS Message (Sent During Call &amp; SMS Blast)
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {['{{first_name}}', '{{attendee_name}}', '{{agent_name}}'].map(token => (
+                      <button
+                        key={token}
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '11px', padding: '2px 8px', minHeight: '26px', border: '1px solid var(--border-subtle)' }}
+                        onClick={() => setForm(p => ({ ...p, smsTemplate: `${(p.smsTemplate || '').trim()} ${token}`.trim() }))}
+                      >
+                        + {token}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '11px', padding: '3px 8px', minHeight: '26px' }}
+                    onClick={() => setForm(p => ({
+                      ...p,
+                      smsTemplate: 'Hi {{first_name}}, here is your registration link for NLP Night of Worship Sheffield (21 Nov 2026, 2pm, Hope Centre S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield',
+                    }))}
+                  >
+                    🎟️ Registration Link (21 Nov • 1 Page)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '11px', padding: '3px 8px', minHeight: '26px' }}
+                    onClick={() => setForm(p => ({
+                      ...p,
+                      smsTemplate: 'IMPORTANT UPDATE: NLP Night of Worship will NOT hold tomorrow, 31 Oct. New date: 21 Nov, doors 2PM. Register: https://tinyurl.com/NightofWorshipinSheffield',
+                    }))}
+                  >
+                    📢 Date Change Update (1 Page)
+                  </button>
+                </div>
+                <textarea
+                  className="form-textarea"
+                  rows={4}
+                  maxLength={320}
+                  value={form.smsTemplate}
+                  onChange={e => setForm(p => ({ ...p, smsTemplate: e.target.value }))}
+                  placeholder="Hi {{first_name}}, here is your registration link..."
+                />
+                {(() => {
+                  const preview = String(form.smsTemplate || '')
+                    .replace(/\{\{\s*first_name\s*\}\}/gi, 'Ojewande')
+                    .replace(/\{\{\s*attendee_first_name\s*\}\}/gi, 'Ojewande')
+                    .replace(/\{\{\s*full_name\s*\}\}/gi, 'Ojewande Olawumi')
+                    .replace(/\{\{\s*attendee_name\s*\}\}/gi, 'Ojewande Olawumi')
+                    .replace(/\{\{\s*agent_name\s*\}\}/gi, 'Sarah');
+                  const len = preview.length;
+                  const segs = Math.max(1, Math.ceil(len / 160));
+                  return (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: 4 }}>
+                        <span>
+                          Preview length: <strong>{len}</strong> / 320 chars ({segs} SMS segment{segs > 1 ? 's' : ''})
+                          {len > 0 && len <= 160 && (
+                            <span style={{ color: 'var(--color-success, #22c55e)', marginLeft: 6, fontWeight: 600 }}>
+                              • 1 Page (Lowest Cost)
+                            </span>
+                          )}
+                        </span>
+                        <span>Sender ID: <strong>NLP UK</strong></span>
+                      </div>
+                      {preview && (
+                        <div style={{
+                          marginTop: 'var(--space-2)',
+                          padding: 'var(--space-3)',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'rgba(59, 130, 246, 0.08)',
+                          border: '1px solid rgba(59, 130, 246, 0.25)',
+                          fontSize: 'var(--text-xs)',
+                        }}>
+                          <div style={{ color: '#93c5fd', fontWeight: 600, marginBottom: 4 }}>
+                            📱 Live SMS Preview (for Ojewande Olawumi):
+                          </div>
+                          <div style={{ color: 'var(--text-primary)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                            {preview}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
 
               <div className="grid-2">
                 <div className="form-group">

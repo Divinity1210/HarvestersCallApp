@@ -11,7 +11,7 @@ export async function PUT(request, { params }) {
     const body = await request.json();
 
     const allowedFields = [
-      'name', 'description', 'script_template',
+      'name', 'description', 'script_template', 'sms_template',
       'next_steps_options', 'consent_message', 'consent_mode',
       'status', 'retention_days', 'call_mode',
     ];

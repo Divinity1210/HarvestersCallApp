@@ -682,6 +682,7 @@ export default function AgentDashboard() {
             deviceCalling={deviceCalling}
             deviceDuration={deviceDuration}
             formattedDeviceDuration={formattedDeviceDuration}
+            smsTemplate={selectedCampaign?.sms_template}
             onOpenSMSModal={() => setShowSMSModal(true)}
           />
 
@@ -787,6 +788,7 @@ export default function AgentDashboard() {
         attendeeName={lead.currentLead?.full_name}
         agentName={profile?.full_name}
         senderPhone="NLP UK"
+        smsTemplate={selectedCampaign?.sms_template}
         onSent={() => handleToggleInCallAction('Registration link sent via SMS')}
       />
 

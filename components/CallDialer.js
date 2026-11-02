@@ -33,6 +33,7 @@ export default function CallDialer({
   deviceCalling,
   deviceDuration,
   formattedDeviceDuration,
+  smsTemplate,
   onOpenSMSModal,
 }) {
   // Auto-init the Twilio device ONLY when in twilio mode
@@ -56,8 +57,18 @@ export default function CallDialer({
     smsPhone = '+' + smsPhone;
   }
 
-  const attendeeFirstName = attendeeName ? attendeeName.split(' ')[0] : 'there';
-  const defaultMessage = `Hi ${attendeeFirstName}, this is ${agentName || 'the team'} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (31st Oct, 1:00 PM at The Hope Centre, S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield. Looking forward to welcoming you!`;
+  const attendeeFirstName = attendeeName ? attendeeName.trim().split(/\s+/)[0] : 'there';
+  const fullName = attendeeName ? attendeeName.trim() : attendeeFirstName;
+  const callerName = agentName ? agentName.trim() : 'the team';
+  const rawTemplate =
+    (smsTemplate && smsTemplate.trim()) ||
+    'Hi {{first_name}}, this is {{agent_name}} from Next Level Prayer. Here is the registration link for our Night of Worship in Sheffield (21 Nov 2026, 2:00 PM at The Hope Centre, S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield. Looking forward to welcoming you!';
+  const defaultMessage = String(rawTemplate)
+    .replace(/\{\{\s*first_name\s*\}\}/gi, attendeeFirstName)
+    .replace(/\{\{\s*attendee_first_name\s*\}\}/gi, attendeeFirstName)
+    .replace(/\{\{\s*full_name\s*\}\}/gi, fullName)
+    .replace(/\{\{\s*attendee_name\s*\}\}/gi, fullName)
+    .replace(/\{\{\s*agent_name\s*\}\}/gi, callerName);
 
   // Twilio call state flags
   const isIdle = callState === 'idle';

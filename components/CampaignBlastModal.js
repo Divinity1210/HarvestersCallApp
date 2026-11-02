@@ -101,8 +101,13 @@ export default function CampaignBlastModal({
 
   useEffect(() => {
     if (!isOpen || !campaign?.id) return;
+    if (campaign?.sms_template && campaign.sms_template.trim()) {
+      setMessageTemplate(campaign.sms_template.trim());
+    } else {
+      setMessageTemplate(QUICK_TEMPLATES[0].text);
+    }
     loadCampaignSmsInfo();
-  }, [isOpen, campaign?.id]);
+  }, [isOpen, campaign?.id, campaign?.sms_template]);
 
   const loadCampaignSmsInfo = async () => {
     setLoadingInfo(true);
@@ -594,6 +599,17 @@ export default function CampaignBlastModal({
 
               {/* Quick Template Pills */}
               <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
+                {campaign?.sms_template && campaign.sms_template.trim() && (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    style={{ fontSize: '11px', padding: '3px 8px' }}
+                    disabled={blasting}
+                    onClick={() => setMessageTemplate(campaign.sms_template.trim())}
+                  >
+                    📋 Campaign Saved SMS
+                  </button>
+                )}
                 {QUICK_TEMPLATES.map((tpl, idx) => (
                   <button
                     key={idx}
