@@ -6,6 +6,7 @@ import { DEFAULT_NEXT_STEPS } from '@/lib/constants';
 import NextStepsEditor from '@/components/NextStepsEditor';
 import CampaignProgress from '@/components/CampaignProgress';
 import CampaignBlastModal from '@/components/CampaignBlastModal';
+import CampaignEmailBlastModal from '@/components/CampaignEmailBlastModal';
 import { RETRYABLE_STATUSES, DEFAULT_REQUEUE, outcomeLabel } from '@/lib/leadOutcomes';
 
 export default function CampaignsPage() {
@@ -25,6 +26,7 @@ export default function CampaignsPage() {
   const [deleteTyped, setDeleteTyped] = useState('');
   const [requeueFor, setRequeueFor] = useState(null); // campaign object
   const [blastFor, setBlastFor] = useState(null); // campaign object for SMS blast
+  const [emailBlastFor, setEmailBlastFor] = useState(null); // campaign object for Email blast
   const [requeueSel, setRequeueSel] = useState(DEFAULT_REQUEUE);
   const [requeueBusy, setRequeueBusy] = useState(false);
   const [requeueMsg, setRequeueMsg] = useState('');
@@ -33,6 +35,8 @@ export default function CampaignsPage() {
   const fileInputRef = useRef(null);
 
   const DEFAULT_CAMPAIGN_SMS = 'Hi {{first_name}}, here is your registration link for NLP Night of Worship Sheffield (21 Nov 2026, 2pm, Hope Centre S2 5BQ): https://tinyurl.com/NightofWorshipinSheffield';
+  const DEFAULT_CAMPAIGN_EMAIL_SUBJECT = 'Important Update & Registration: Next Level Prayers UK ({{first_name}})';
+  const DEFAULT_CAMPAIGN_EMAIL_BODY = `Hi {{first_name}},\n\nWarm greetings from Next Level Prayers UK (Harvesters International Christian Centre)!\n\nWe are reaching out with your personal registration link and event details:\nhttps://tinyurl.com/NightofWorshipinSheffield\n\nEvent Details:\n• Date: Saturday, 21 November 2026\n• Doors Open: 2:00 PM\n• Venue: Hope Centre, S2 5BQ, Sheffield\n\nIf you have not yet registered, please click the link above to secure your free seat today. We cannot wait to host you!\n\nGod bless you,\nNext Level Prayers UK Team`;
 
   // Form state
   const [form, setForm] = useState({
@@ -41,6 +45,8 @@ export default function CampaignsPage() {
     callMode: 'device', // 'device' (Volunteer Mobile / SIM) | 'twilio' (Twilio WebRTC)
     scriptTemplate: `## Introduction\nSAY: Hello, good day! Am I speaking with **{{attendee_name}}**?\nSAY: My name is **{{agent_name}}** and I am calling from Harvesters International Christian Centre.\nSAY: I am calling to follow up on your attendance at the Next Level Prayer Conference.\n\n## Experience Check\nASK: How was your experience at the conference?\nNOTE: Listen carefully and note any testimony or positive feedback.\n\n## Testimony\nASK: Did anything significant happen to you during the conference? Any testimony you'd like to share?\nNOTE: If they share a testimony, listen fully and acknowledge it warmly.\nSAY: That is wonderful! Praise God!\n\n## Next Steps\nSAY: We have some exciting opportunities for you to continue growing in your faith.\nASK: Would you be interested in any of the following?\nACTION: Read through the Next Steps options and note which ones the attendee agrees to.\n\n## Closing\nSAY: Thank you so much for your time, {{attendee_name}}. God bless you!\nSAY: We look forward to seeing you at church.`,
     smsTemplate: DEFAULT_CAMPAIGN_SMS,
+    emailSubject: DEFAULT_CAMPAIGN_EMAIL_SUBJECT,
+    emailTemplate: DEFAULT_CAMPAIGN_EMAIL_BODY,
     nextStepsOptions: DEFAULT_NEXT_STEPS.join('\n'),
     consentMessage: 'This call may be recorded for quality purposes.',
     consentMode: 'script', // 'whisper' | 'script' | 'none'
@@ -121,6 +127,8 @@ export default function CampaignsPage() {
           call_mode: form.callMode || 'device',
           script_template: form.scriptTemplate,
           sms_template: form.smsTemplate || '',
+          email_subject: form.emailSubject || '',
+          email_template: form.emailTemplate || '',
           next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
           consent_message: form.consentMessage,
           consent_mode: form.consentMode,
@@ -134,7 +142,15 @@ export default function CampaignsPage() {
       } else {
         setShowCreate(false);
         fetchCampaigns();
-        setForm(prev => ({ ...prev, name: '', description: '', callMode: 'device', smsTemplate: DEFAULT_CAMPAIGN_SMS }));
+        setForm(prev => ({
+          ...prev,
+          name: '',
+          description: '',
+          callMode: 'device',
+          smsTemplate: DEFAULT_CAMPAIGN_SMS,
+          emailSubject: DEFAULT_CAMPAIGN_EMAIL_SUBJECT,
+          emailTemplate: DEFAULT_CAMPAIGN_EMAIL_BODY,
+        }));
       }
     } catch (err) {
       console.error('Unexpected error:', err);
@@ -169,6 +185,8 @@ export default function CampaignsPage() {
       callMode: campaign.call_mode || 'device',
       scriptTemplate: campaign.script_template || '',
       smsTemplate: campaign.sms_template || DEFAULT_CAMPAIGN_SMS,
+      emailSubject: campaign.email_subject || DEFAULT_CAMPAIGN_EMAIL_SUBJECT,
+      emailTemplate: campaign.email_template || DEFAULT_CAMPAIGN_EMAIL_BODY,
       nextStepsOptions: (campaign.next_steps_options || []).join('\n'),
       consentMessage: campaign.consent_message || '',
       consentMode: campaign.consent_mode || 'script',
@@ -190,6 +208,8 @@ export default function CampaignsPage() {
         call_mode: form.callMode || 'device',
         script_template: form.scriptTemplate,
         sms_template: form.smsTemplate || '',
+        email_subject: form.emailSubject || '',
+        email_template: form.emailTemplate || '',
         next_steps_options: form.nextStepsOptions.split('\n').filter(s => s.trim()),
         consent_message: form.consentMessage,
         consent_mode: form.consentMode,
@@ -325,6 +345,8 @@ export default function CampaignsPage() {
               callMode: 'device',
               scriptTemplate: form.scriptTemplate,
               smsTemplate: form.smsTemplate || DEFAULT_CAMPAIGN_SMS,
+              emailSubject: form.emailSubject || DEFAULT_CAMPAIGN_EMAIL_SUBJECT,
+              emailTemplate: form.emailTemplate || DEFAULT_CAMPAIGN_EMAIL_BODY,
               nextStepsOptions: form.nextStepsOptions,
               consentMessage: form.consentMessage,
               consentMode: 'script',
@@ -354,6 +376,9 @@ export default function CampaignsPage() {
                     <span>🗓️ Created {new Date(campaign.created_at).toLocaleDateString()}</span>
                     <span>🗑️ Retention: {campaign.retention_days} days</span>
                     <span>✉️ {(campaignStats[campaign.id]?.smsSent || 0).toLocaleString()} SMS sent</span>
+                    <span>
+                      📧 {(campaignStats[campaign.id]?.emailSent || 0).toLocaleString()} / {(campaignStats[campaign.id]?.leadsWithEmail || 0).toLocaleString()} emailed
+                    </span>
                     <span style={{ fontWeight: 600, color: campaign.call_mode === 'device' ? 'var(--color-success)' : 'var(--color-primary)' }}>
                       {campaign.call_mode === 'device' ? '📱 Volunteer Phone (SIM)' : '☁️ Twilio WebRTC'}
                     </span>
@@ -397,6 +422,19 @@ export default function CampaignsPage() {
                   title="Send bulk personalized SMS to contacts in this campaign via NLP UK"
                 >
                   📣 Blast SMS
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setEmailBlastFor(campaign)}
+                  style={{
+                    background: 'rgba(59, 130, 246, 0.14)',
+                    borderColor: 'rgba(59, 130, 246, 0.45)',
+                    color: '#93c5fd',
+                    fontWeight: 700,
+                  }}
+                  title="Send bulk personalized Emails to contacts in this campaign"
+                >
+                  📧 Blast Email
                 </button>
                 <button
                   className="btn btn-secondary btn-sm"
@@ -676,6 +714,42 @@ export default function CampaignsPage() {
                     </div>
                   );
                 })()}
+              </div>
+
+              {/* Campaign Email Subject & Body Template */}
+              <div className="form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>
+                    📧 Campaign Email Template (Sent During Call &amp; Email Blast)
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {['{{first_name}}', '{{attendee_name}}', '{{agent_name}}'].map(token => (
+                      <button
+                        key={token}
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '11px', padding: '2px 8px', minHeight: '26px', border: '1px solid var(--border-subtle)' }}
+                        onClick={() => setForm(p => ({ ...p, emailTemplate: `${(p.emailTemplate || '').trim()} ${token}`.trim() }))}
+                      >
+                        + {token}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  className="form-input"
+                  style={{ marginBottom: 'var(--space-2)' }}
+                  value={form.emailSubject}
+                  onChange={e => setForm(p => ({ ...p, emailSubject: e.target.value }))}
+                  placeholder="Email Subject Line (e.g. Important Update & Registration: Next Level Prayers UK ({{first_name}}))"
+                />
+                <textarea
+                  className="form-textarea"
+                  rows={5}
+                  value={form.emailTemplate}
+                  onChange={e => setForm(p => ({ ...p, emailTemplate: e.target.value }))}
+                  placeholder="Hi {{first_name}}, ..."
+                />
               </div>
 
               <div className="form-group">
@@ -1142,6 +1216,42 @@ export default function CampaignsPage() {
                 })()}
               </div>
 
+              {/* Campaign Email Subject & Body Template */}
+              <div className="form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>
+                    📧 Campaign Email Template (Sent During Call &amp; Email Blast)
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {['{{first_name}}', '{{attendee_name}}', '{{agent_name}}'].map(token => (
+                      <button
+                        key={token}
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ fontSize: '11px', padding: '2px 8px', minHeight: '26px', border: '1px solid var(--border-subtle)' }}
+                        onClick={() => setForm(p => ({ ...p, emailTemplate: `${(p.emailTemplate || '').trim()} ${token}`.trim() }))}
+                      >
+                        + {token}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <input
+                  className="form-input"
+                  style={{ marginBottom: 'var(--space-2)' }}
+                  value={form.emailSubject}
+                  onChange={e => setForm(p => ({ ...p, emailSubject: e.target.value }))}
+                  placeholder="Email Subject Line (e.g. Important Update & Registration: Next Level Prayers UK ({{first_name}}))"
+                />
+                <textarea
+                  className="form-textarea"
+                  rows={6}
+                  value={form.emailTemplate}
+                  onChange={e => setForm(p => ({ ...p, emailTemplate: e.target.value }))}
+                  placeholder="Hi {{first_name}}, ..."
+                />
+              </div>
+
               <div className="grid-2">
                 <div className="form-group">
                   <label className="form-label">Consent Mode</label>
@@ -1279,6 +1389,16 @@ export default function CampaignsPage() {
           campaign={blastFor}
           isOpen={!!blastFor}
           onClose={() => setBlastFor(null)}
+          onCompleted={fetchCampaigns}
+        />
+      )}
+
+      {/* Campaign Email Blast Modal */}
+      {emailBlastFor && (
+        <CampaignEmailBlastModal
+          campaign={emailBlastFor}
+          isOpen={!!emailBlastFor}
+          onClose={() => setEmailBlastFor(null)}
           onCompleted={fetchCampaigns}
         />
       )}

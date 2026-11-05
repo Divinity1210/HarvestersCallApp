@@ -789,7 +789,7 @@ export default function AgentDashboard() {
         }}
       />
 
-      {/* WhatsApp & Carrier/Church SMS Composer Modal */}
+      {/* WhatsApp, Carrier/Church SMS & Email Composer Modal */}
       <SendSMSModal
         isOpen={showSMSModal}
         onClose={() => setShowSMSModal(false)}
@@ -797,6 +797,14 @@ export default function AgentDashboard() {
         campaignId={selectedCampaign?.id}
         attendeeName={lead.currentLead?.full_name}
         phoneNumber={lead.currentLead?.phone_number}
+        attendeeEmail={
+          lead.currentLead?.metadata?.email ||
+          lead.currentLead?.metadata?.email_address ||
+          lead.currentLead?.metadata?.e_mail ||
+          ''
+        }
+        emailSubject={selectedCampaign?.email_subject}
+        emailTemplate={selectedCampaign?.email_template}
         agentName={profile?.full_name}
         senderPhone="NLP UK"
         smsTemplate={selectedCampaign?.sms_template}

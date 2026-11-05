@@ -10,6 +10,7 @@ export async function GET(request) {
     const rows = await query(
       `SELECT 
         c.id, c.name, c.description, c.script_template, c.sms_template,
+        c.email_subject, c.email_template,
         c.next_steps_options, c.consent_message, c.consent_mode, 
         c.status, c.retention_days, c.call_mode, c.created_at, c.updated_at,
         COUNT(l.id)::int as total_leads,
@@ -24,6 +25,8 @@ export async function GET(request) {
         COUNT(l.id) FILTER (WHERE l.status = 'failed')::int as failed_leads,
         COUNT(l.id) FILTER (WHERE l.status = 'omitted_outside_uk')::int as omitted_leads,
         COUNT(l.id) FILTER (WHERE l.metadata->>'last_sms_sent_at' IS NOT NULL)::int as sms_sent_leads,
+        COUNT(l.id) FILTER (WHERE l.metadata->>'last_email_sent_at' IS NOT NULL)::int as email_sent_leads,
+        COUNT(l.id) FILTER (WHERE COALESCE(l.metadata->>'email', l.metadata->>'email_address', l.metadata->>'e_mail', '') LIKE '%@%')::int as leads_with_email,
         COALESCE(MAX(l.retry_round), 0)::int as max_round
        FROM campaigns c
        LEFT JOIN leads l ON l.campaign_id = c.id
@@ -63,6 +66,8 @@ export async function GET(request) {
           failed: byStatus.no_answer + byStatus.busy + byStatus.unreached + byStatus.failed,
           byStatus,
           smsSent: c.sms_sent_leads || 0,
+          emailSent: c.email_sent_leads || 0,
+          leadsWithEmail: c.leads_with_email || 0,
           maxRound: c.max_round || 0,
           percent: callableTotal > 0 ? Math.round((completed / callableTotal) * 100) : 0,
           attemptedPercent: callableTotal > 0 ? Math.round((attempted / callableTotal) * 100) : 0,
@@ -91,6 +96,10 @@ export async function POST(request) {
       scriptTemplate,
       sms_template = '',
       smsTemplate,
+      email_subject = '',
+      emailSubject,
+      email_template = '',
+      emailTemplate,
       next_steps_options = [],
       nextStepsOptions,
       consent_message = 'This call may be recorded for quality purposes.',
@@ -110,6 +119,8 @@ export async function POST(request) {
 
     const finalScript = script_template || scriptTemplate || '';
     const finalSmsTemplate = (sms_template ?? smsTemplate ?? '').trim();
+    const finalEmailSubject = (email_subject ?? emailSubject ?? '').trim();
+    const finalEmailTemplate = (email_template ?? emailTemplate ?? '').trim();
     const rawOptions = next_steps_options.length ? next_steps_options : nextStepsOptions;
     const finalOptions = Array.isArray(rawOptions)
       ? rawOptions
@@ -122,15 +133,17 @@ export async function POST(request) {
 
     const rows = await query(
       `INSERT INTO campaigns (
-        name, description, script_template, sms_template, next_steps_options,
-        consent_message, consent_mode, retention_days, call_mode, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'active')
+        name, description, script_template, sms_template, email_subject, email_template,
+        next_steps_options, consent_message, consent_mode, retention_days, call_mode, status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
       RETURNING *`,
       [
         finalName,
         description,
         finalScript,
         finalSmsTemplate,
+        finalEmailSubject,
+        finalEmailTemplate,
         JSON.stringify(finalOptions),
         finalConsentMsg,
         finalConsentMode,

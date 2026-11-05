@@ -427,7 +427,7 @@ export default function CallDialer({
                   width: '100%',
                 }}
               >
-                ✉️ Full Message Composer / Official Church SMS (NLP UK)
+                📧 / ✉️ Send Email or Official Church SMS (NLP UK)
               </button>
             )}
           </div>

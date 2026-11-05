@@ -12,6 +12,7 @@ export async function PUT(request, { params }) {
 
     const allowedFields = [
       'name', 'description', 'script_template', 'sms_template',
+      'email_subject', 'email_template',
       'next_steps_options', 'consent_message', 'consent_mode',
       'status', 'retention_days', 'call_mode',
     ];

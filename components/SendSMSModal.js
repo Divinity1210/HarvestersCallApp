@@ -65,6 +65,9 @@ export default function SendSMSModal({
   campaignId,
   attendeeName,
   phoneNumber,
+  attendeeEmail = '',
+  emailSubject = '',
+  emailTemplate = '',
   agentName,
   senderPhone = 'NLP UK',
   defaultMessage,
@@ -96,6 +99,8 @@ export default function SendSMSModal({
     renderCampaignMessage(getActiveRawTemplate(), { attendeeName, agentName })
   );
   const [sending, setSending] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState(attendeeEmail || '');
   const [sentSuccess, setSentSuccess] = useState('');
   const [savedNotice, setSavedNotice] = useState('');
   const [error, setError] = useState('');
@@ -104,10 +109,11 @@ export default function SendSMSModal({
   useEffect(() => {
     if (!isOpen) return;
     setMessage(renderCampaignMessage(getActiveRawTemplate(), { attendeeName, agentName }));
+    setRecipientEmail(attendeeEmail || '');
     setSentSuccess('');
     setSavedNotice('');
     setError('');
-  }, [isOpen, attendeeName, agentName, smsTemplate, defaultMessage, campaignId]);
+  }, [isOpen, attendeeName, attendeeEmail, agentName, smsTemplate, defaultMessage, campaignId]);
 
   if (!isOpen) return null;
 
@@ -117,6 +123,40 @@ export default function SendSMSModal({
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(message.trim())}`
     : '#';
   const carrierSmsHref = buildCarrierSmsHref(phoneNumber, message.trim());
+
+  const renderedEmailSubject = renderCampaignMessage(
+    emailSubject || 'Important Update & Registration: Next Level Prayers UK ({{first_name}})',
+    { attendeeName, agentName }
+  );
+  const mailtoHref = recipientEmail.trim()
+    ? `mailto:${encodeURIComponent(recipientEmail.trim())}?subject=${encodeURIComponent(renderedEmailSubject)}&body=${encodeURIComponent(message.trim())}`
+    : '#';
+
+  const handleSendOfficialEmail = async () => {
+    if (!message.trim() || !leadId || !recipientEmail.trim()) return;
+    setSendingEmail(true);
+    setError('');
+    try {
+      const res = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId,
+          toEmail: recipientEmail.trim(),
+          subject: renderedEmailSubject,
+          message: message.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to send email');
+      setSentSuccess(`✅ Official Email sent to ${data.to}!`);
+      if (onSent) onSent('Email');
+    } catch (err) {
+      setError(err.message || 'Error sending email');
+    } finally {
+      setSendingEmail(false);
+    }
+  };
 
   const handleSaveAsDefaultForMe = () => {
     const attendeeFirstName = attendeeName ? attendeeName.trim().split(/\s+/)[0] : '';
@@ -326,6 +366,83 @@ export default function SendSMSModal({
                 )}
               </button>
             )}
+
+            {/* Email Follow-Up Section */}
+            <div
+              style={{
+                marginTop: '6px',
+                paddingTop: '10px',
+                borderTop: '1px solid var(--border-subtle)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <label htmlFor="modal-recipient-email" style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)' }}>
+                  📧 Or Send via Email:
+                </label>
+                {emailTemplate && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ fontSize: '10px', padding: '2px 8px', minHeight: '22px', border: '1px solid var(--border-subtle)' }}
+                    onClick={() => setMessage(renderCampaignMessage(emailTemplate, { attendeeName, agentName }))}
+                  >
+                    Load Full Email Template
+                  </button>
+                )}
+              </div>
+              <input
+                id="modal-recipient-email"
+                type="email"
+                className="form-input"
+                style={{ fontSize: '13px', padding: '6px 10px', minHeight: '38px' }}
+                placeholder="Attendee email address (e.g. name@example.com)"
+                value={recipientEmail}
+                onChange={e => setRecipientEmail(e.target.value)}
+                autoComplete="email"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+              />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <a
+                  href={mailtoHref}
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleCarrierChannelClick('Email App')}
+                  style={{
+                    pointerEvents: (!recipientEmail.trim() || !message.trim()) ? 'none' : 'auto',
+                    opacity: (!recipientEmail.trim() || !message.trim()) ? 0.5 : 1,
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: '38px',
+                    fontSize: '12px',
+                  }}
+                >
+                  📧 Open Mail App
+                </a>
+                {leadId && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleSendOfficialEmail}
+                    disabled={sendingEmail || !recipientEmail.trim() || !message.trim()}
+                    style={{
+                      minHeight: '38px',
+                      fontSize: '12px',
+                      background: 'rgba(59, 130, 246, 0.14)',
+                      borderColor: 'rgba(59, 130, 246, 0.4)',
+                      color: '#93c5fd',
+                    }}
+                  >
+                    {sendingEmail ? 'Sending Email...' : '☁️ Send Official Email'}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
