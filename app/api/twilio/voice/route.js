@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { pickRotatingCallerId } from '@/lib/sms';
 import twilio from 'twilio';
 
 /**
  * POST /api/twilio/voice
- * TwiML endpoint — Twilio calls this when an agent initiates a call.
- * Looks up the phone number server-side (volunteer never sees it),
- * plays a consent whisper, then bridges the call.
+ * TwiML endpoint — Twilio calls this when an agent initiates a call
+ * (or when an attendee calls back one of our UK Twilio numbers).
  */
 export async function POST(request) {
   try {
@@ -14,18 +14,29 @@ export async function POST(request) {
     const leadId = formData.get('leadId');
     const callId = formData.get('callId');
 
+    // If an attendee calls one of our UK Twilio numbers back directly (no leadId),
+    // play a warm, official church message so they know who called them.
     if (!leadId) {
       const twiml = new twilio.twiml.VoiceResponse();
-      twiml.say('Error: No lead specified.');
+      twiml.say(
+        { voice: 'Polly.Amy', language: 'en-GB' },
+        'Hello, and welcome to Harvesters International Christian Centre, Next Level Prayers U K. ' +
+          'One of our outreach team members recently called to check on you and share details for our upcoming service and Night of Worship. ' +
+          'Please check your text messages or WhatsApp for your registration link, or we will reach back out to you shortly. ' +
+          'Thank you for calling, and God bless you!'
+      );
       twiml.hangup();
       return new Response(twiml.toString(), {
         headers: { 'Content-Type': 'text/xml' },
       });
     }
 
-    // Look up phone number from Neon PostgreSQL (masked from volunteer)
+    // Look up phone number & retry_round from Neon PostgreSQL (masked from volunteer)
     const leadRows = await query(
-      `SELECT phone_number, campaign_id FROM leads WHERE id = $1 LIMIT 1`,
+      `SELECT phone_number, campaign_id, COALESCE(retry_round, 0)::int AS retry_round
+       FROM leads
+       WHERE id = $1
+       LIMIT 1`,
       [leadId]
     );
 
@@ -40,10 +51,13 @@ export async function POST(request) {
 
     const lead = leadRows[0];
 
-    // Build TwiML response
+    // Build TwiML response with Automatic Multi-Number Caller ID Rotation
     const twiml = new twilio.twiml.VoiceResponse();
 
-    const callerId = (process.env.TWILIO_CALLER_ID || process.env.TWILIO_PHONE_NUMBER || '+447897011851').trim();
+    const callerId = await pickRotatingCallerId({
+      leadId,
+      retryRound: lead.retry_round || 0,
+    });
 
     const dial = twiml.dial({
       callerId,
