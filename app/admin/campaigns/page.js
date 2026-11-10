@@ -168,7 +168,12 @@ export default function CampaignsPage() {
   };
 
   const handleCallModeToggle = async (campaignId, currentMode) => {
-    const newMode = currentMode === 'device' ? 'twilio' : 'device';
+    const newMode =
+      currentMode === 'device'
+        ? 'zadarma'
+        : currentMode === 'zadarma'
+        ? 'twilio'
+        : 'device';
     await fetch('/api/campaigns', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -379,20 +384,28 @@ export default function CampaignsPage() {
                     <span>
                       📧 {(campaignStats[campaign.id]?.emailSent || 0).toLocaleString()} / {(campaignStats[campaign.id]?.leadsWithEmail || 0).toLocaleString()} emailed
                     </span>
-                    <span style={{ fontWeight: 600, color: campaign.call_mode === 'device' ? 'var(--color-success)' : 'var(--color-primary)' }}>
-                      {campaign.call_mode === 'device' ? '📱 Volunteer Phone (SIM)' : '☁️ Twilio WebRTC'}
+                    <span style={{ fontWeight: 600, color: campaign.call_mode === 'device' ? 'var(--color-success)' : campaign.call_mode === 'zadarma' ? '#10b981' : 'var(--color-primary)' }}>
+                      {campaign.call_mode === 'device'
+                        ? '📱 Volunteer Phone (SIM)'
+                        : campaign.call_mode === 'zadarma'
+                        ? '🟢 Zadarma VoIP'
+                        : '☁️ Twilio WebRTC'}
                     </span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    className={`badge ${campaign.call_mode === 'device' ? 'badge-success' : 'badge-neutral'}`}
+                    className={`badge ${campaign.call_mode === 'device' || campaign.call_mode === 'zadarma' ? 'badge-success' : 'badge-neutral'}`}
                     style={{ cursor: 'pointer', border: 'none', padding: '5px 10px', fontSize: '11px', fontWeight: 600 }}
                     onClick={() => handleCallModeToggle(campaign.id, campaign.call_mode || 'device')}
-                    title="Click to toggle between Volunteer Phone (SIM) and Twilio"
+                    title="Click to cycle between Volunteer Phone (SIM), Zadarma VoIP, and Twilio"
                   >
-                    {campaign.call_mode === 'device' ? '📱 SIM Call' : '☁️ Twilio'} ⇄ Switch
+                    {campaign.call_mode === 'device'
+                      ? '📱 SIM Call'
+                      : campaign.call_mode === 'zadarma'
+                      ? '🟢 Zadarma'
+                      : '☁️ Twilio'} ⇄ Switch
                   </button>
                   <span className={`badge ${
                     campaign.status === 'active' ? 'badge-success' :
@@ -601,7 +614,32 @@ export default function CampaignsPage() {
                       <strong style={{ fontSize: 'var(--text-sm)' }}>☁️ Twilio Cloud (WebRTC)</strong>
                     </div>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                      In-browser calling with call recording & automated AI QA. Requires Twilio balance.
+                      In-browser calling with call recording &amp; automated AI QA. Requires Twilio balance.
+                    </span>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: form.callMode === 'zadarma' ? '2px solid #10b981' : '1px solid var(--border-subtle)',
+                    background: form.callMode === 'zadarma' ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <input
+                        type="radio"
+                        name="createCallMode"
+                        value="zadarma"
+                        checked={form.callMode === 'zadarma'}
+                        onChange={() => setForm(p => ({ ...p, callMode: 'zadarma' }))}
+                      />
+                      <strong style={{ fontSize: 'var(--text-sm)' }}>🟢 Zadarma VoIP (Cloud PBX)</strong>
+                    </div>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      <strong>~60% cheaper than Twilio • Per-second billing.</strong> Click-to-call &amp; WebRTC softphone with free call recording.
                     </span>
                   </label>
                 </div>
@@ -1061,7 +1099,32 @@ export default function CampaignsPage() {
                       <strong style={{ fontSize: 'var(--text-sm)' }}>☁️ Twilio Cloud (WebRTC)</strong>
                     </div>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                      In-browser calling with call recording & automated AI QA. Requires Twilio balance.
+                      In-browser calling with call recording &amp; automated AI QA. Requires Twilio balance.
+                    </span>
+                  </label>
+
+                  <label style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-3)',
+                    borderRadius: 'var(--radius-md)',
+                    border: form.callMode === 'zadarma' ? '2px solid #10b981' : '1px solid var(--border-subtle)',
+                    background: form.callMode === 'zadarma' ? 'rgba(16, 185, 129, 0.08)' : 'transparent',
+                    cursor: 'pointer'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                      <input
+                        type="radio"
+                        name="editCallMode"
+                        value="zadarma"
+                        checked={form.callMode === 'zadarma'}
+                        onChange={() => setForm(p => ({ ...p, callMode: 'zadarma' }))}
+                      />
+                      <strong style={{ fontSize: 'var(--text-sm)' }}>🟢 Zadarma VoIP (Cloud PBX)</strong>
+                    </div>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                      <strong>~60% cheaper than Twilio • Per-second billing.</strong> Click-to-call &amp; WebRTC softphone with free call recording.
                     </span>
                   </label>
                 </div>

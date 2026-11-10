@@ -120,10 +120,10 @@ export default function LeadCard({
               </span>
             )}
           </h2>
-          {callMode === 'device' && lead.phone_number ? (
+          {(callMode === 'device' || callMode === 'zadarma') && lead.phone_number ? (
             <p style={{ margin: '4px 0 0', display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)' }}>
               <a
-                href={`tel:${lead.phone_number}`}
+                href={callMode === 'zadarma' ? `sip:${lead.phone_number}` : `tel:${lead.phone_number}`}
                 style={{
                   color: 'var(--color-primary-light, #818cf8)',
                   fontWeight: 600,
@@ -133,10 +133,10 @@ export default function LeadCard({
                   gap: '4px',
                 }}
               >
-                <span>📱</span> {lead.phone_number}
+                <span>{callMode === 'zadarma' ? '🟢' : '📱'}</span> {lead.phone_number}
               </a>
               <span style={{ fontSize: '10px', background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '1px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                SIM
+                {callMode === 'zadarma' ? 'ZADARMA' : 'SIM'}
               </span>
             </p>
           ) : (

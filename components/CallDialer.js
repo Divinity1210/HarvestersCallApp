@@ -18,7 +18,7 @@ import styles from './CallDialer.module.css';
  * 2. 'twilio' mode: In-browser WebRTC softphone with audio recording & automated AI QA.
  */
 export default function CallDialer({
-  callMode = 'device', // 'device' | 'twilio'
+  callMode = 'device', // 'device' | 'twilio' | 'zadarma'
   callState,
   formattedDuration,
   deviceReady,
@@ -32,6 +32,8 @@ export default function CallDialer({
   onToggleMute,
   onSkip,
   hasLead,
+  leadId,
+  callId,
   campaignId,
   attendeeName,
   agentName,
@@ -117,25 +119,218 @@ export default function CallDialer({
   const isActive = callState === 'active';
   const isEnded = callState === 'ended';
 
-  // In device mode, check if we're calling or idle
-  const isInDeviceCall = callMode === 'device' && deviceCalling;
-  const isDialingActive = callMode === 'device' ? isInDeviceCall : isActive;
-  const currentDuration = callMode === 'device' ? formattedDeviceDuration : formattedDuration;
+  // Zadarma state
+  const [zadarmaReady, setZadarmaReady] = useState(false);
+  const [zadarmaBalance, setZadarmaBalance] = useState(null);
+  const [zadarmaCurrency, setZadarmaCurrency] = useState('USD');
+  const [zadarmaDialing, setZadarmaDialing] = useState(false);
+  const [zadarmaStatusMsg, setZadarmaStatusMsg] = useState('');
+  const [zadarmaError, setZadarmaError] = useState('');
+  const [showZadarmaSettings, setShowZadarmaSettings] = useState(false);
+  const [zadarmaApiKey, setZadarmaApiKey] = useState('');
+  const [zadarmaApiSecret, setZadarmaApiSecret] = useState('');
+  const [zadarmaSip, setZadarmaSip] = useState('100');
+
+  useEffect(() => {
+    if (callMode !== 'zadarma') return;
+    let localOverrides = {};
+    try {
+      const saved = localStorage.getItem('harvesters_zadarma_cfg');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        localOverrides = parsed;
+        if (parsed.apiKey) setZadarmaApiKey(parsed.apiKey);
+        if (parsed.apiSecret) setZadarmaApiSecret(parsed.apiSecret);
+        if (parsed.sip) setZadarmaSip(parsed.sip);
+      }
+    } catch {}
+
+    const checkZadarmaStatus = async () => {
+      try {
+        const res = localOverrides.apiKey
+          ? await fetch('/api/zadarma', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'status',
+                fromExtension: localOverrides.sip || '100',
+                overrides: localOverrides,
+              }),
+            })
+          : await fetch('/api/zadarma');
+        const data = await res.json();
+        if (data?.configured) {
+          setZadarmaReady(true);
+          setZadarmaBalance(data.balance);
+          setZadarmaCurrency(data.currency || 'USD');
+          if (data.sip) setZadarmaSip(prev => prev || data.sip);
+          if (data.webrtcKey) {
+            loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || localOverrides.sip || '100');
+          }
+        } else {
+          setZadarmaReady(false);
+        }
+      } catch {
+        setZadarmaReady(false);
+      }
+    };
+
+    checkZadarmaStatus();
+  }, [callMode]);
+
+  const loadZadarmaWebRtcWidget = (webrtcKey, sipExt) => {
+    if (typeof window === 'undefined' || !webrtcKey || !sipExt) return;
+    const initFn = () => {
+      if (typeof window.zadarmaWidgetFn === 'function') {
+        try {
+          window.zadarmaWidgetFn(
+            webrtcKey,
+            sipExt,
+            'rounded',
+            'en',
+            true,
+            "{right:'16px',bottom:'16px'}"
+          );
+        } catch (e) {
+          console.warn('Zadarma widget init warning:', e);
+        }
+      }
+    };
+
+    if (document.getElementById('zadarma-webrtc-lib')) {
+      initFn();
+      return;
+    }
+
+    const s1 = document.createElement('script');
+    s1.id = 'zadarma-webrtc-lib';
+    s1.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v8/js/loader-phone-lib.js?v=23';
+    s1.async = true;
+    s1.onload = () => {
+      const s2 = document.createElement('script');
+      s2.id = 'zadarma-webrtc-fn';
+      s2.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v8/js/loader-phone-fn.js?v=23';
+      s2.async = true;
+      s2.onload = initFn;
+      document.body.appendChild(s2);
+    };
+    document.body.appendChild(s1);
+  };
+
+  const handleSaveZadarmaSettings = async () => {
+    setZadarmaError('');
+    setZadarmaStatusMsg('');
+    const overrides = {
+      apiKey: zadarmaApiKey.trim(),
+      apiSecret: zadarmaApiSecret.trim(),
+      sip: zadarmaSip.trim() || '100',
+    };
+    try {
+      localStorage.setItem('harvesters_zadarma_cfg', JSON.stringify(overrides));
+    } catch {}
+
+    try {
+      const res = await fetch('/api/zadarma', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'status',
+          fromExtension: overrides.sip,
+          overrides,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.configured) {
+        throw new Error(data.error || 'Could not verify Zadarma credentials');
+      }
+      setZadarmaReady(true);
+      setZadarmaBalance(data.balance);
+      setZadarmaCurrency(data.currency || 'USD');
+      if (data.webrtcKey) {
+        loadZadarmaWebRtcWidget(data.webrtcKey, overrides.sip);
+      }
+      setZadarmaStatusMsg('✅ Zadarma connected & WebRTC widget ready!');
+      setShowZadarmaSettings(false);
+    } catch (err) {
+      setZadarmaError(err.message);
+    }
+  };
+
+  const handleZadarmaStartCall = async () => {
+    if (!hasLead) return;
+    setZadarmaDialing(true);
+    setZadarmaError('');
+    setZadarmaStatusMsg('');
+
+    const overrides = {
+      apiKey: zadarmaApiKey.trim(),
+      apiSecret: zadarmaApiSecret.trim(),
+      sip: zadarmaSip.trim() || '100',
+    };
+
+    try {
+      const res = await fetch('/api/zadarma', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'call',
+          leadId,
+          callId,
+          phoneNumber,
+          fromExtension: overrides.sip,
+          overrides,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to initiate Zadarma call');
+      }
+      setZadarmaStatusMsg(`📞 Ringing your Zadarma extension (${data.from}) → bridging ${attendeeName || 'attendee'}...`);
+      if (onDeviceCallStarted) onDeviceCallStarted();
+    } catch (err) {
+      setZadarmaError(err.message);
+    } finally {
+      setZadarmaDialing(false);
+    }
+  };
+
+  // In device or zadarma mode, check if we're calling or idle
+  const isManualTimerMode = callMode === 'device' || callMode === 'zadarma';
+  const isInDeviceCall = isManualTimerMode && deviceCalling;
+  const isDialingActive = isManualTimerMode ? isInDeviceCall : isActive;
+  const currentDuration = isManualTimerMode ? formattedDeviceDuration : formattedDuration;
 
   return (
     <div className={styles.dialer}>
       <div className={styles.topRow}>
         <h3 className={styles.title}>
-          {callMode === 'device' ? '📱 Mobile / SIM Controls' : '☎️ Call Controls'}
+          {callMode === 'device'
+            ? '📱 Mobile / SIM Controls'
+            : callMode === 'zadarma'
+            ? '🟢 Zadarma VoIP Controls'
+            : '☎️ Call Controls'}
         </h3>
         {/* Device Status */}
         <div className={styles.deviceStatus}>
           <div className={`${styles.statusDot} ${
-            callMode === 'device' ? styles.statusReady :
-            deviceReady ? styles.statusReady : styles.statusNotReady
+            callMode === 'device'
+              ? styles.statusReady
+              : callMode === 'zadarma'
+              ? (zadarmaReady ? styles.statusReady : styles.statusNotReady)
+              : deviceReady
+              ? styles.statusReady
+              : styles.statusNotReady
           }`}></div>
           <span className={styles.statusText}>
-            {callMode === 'device' ? 'Volunteer Phone (Free)' : deviceReady ? 'Twilio Ready' : 'Connecting...'}
+            {callMode === 'device'
+              ? 'Volunteer Phone (Free)'
+              : callMode === 'zadarma'
+              ? zadarmaReady
+                ? `Zadarma Ready${zadarmaBalance !== null ? ` (${zadarmaBalance} ${zadarmaCurrency})` : ''}`
+                : 'Zadarma (SIP / API)'
+              : deviceReady
+              ? 'Twilio Ready'
+              : 'Connecting...'}
           </span>
         </div>
       </div>
@@ -162,6 +357,8 @@ export default function CallDialer({
           <span className={styles.callStatus}>
             {callMode === 'device' ? (
               isInDeviceCall ? 'In Call via Phone / SIM' : (hasLead ? 'Ready to dial from phone' : 'Fetch attendee first')
+            ) : callMode === 'zadarma' ? (
+              isInDeviceCall ? 'In Call via Zadarma VoIP' : (hasLead ? 'Ready to dial via Zadarma' : 'Fetch attendee first')
             ) : (
               <>
                 {isIdle && (hasLead ? 'Ready to dial' : 'Fetch attendee first')}
@@ -216,6 +413,148 @@ export default function CallDialer({
               <span>Call Finished — Log Notes &amp; Outcome</span>
             </button>
           )
+        ) : callMode === 'zadarma' ? (
+          // Zadarma VoIP Actions (3rd Pathway)
+          <>
+            {!isInDeviceCall ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                <button
+                  type="button"
+                  className={`btn btn-success ${styles.dialBtn}`}
+                  onClick={handleZadarmaStartCall}
+                  disabled={!hasLead || zadarmaDialing}
+                  style={{
+                    background: 'linear-gradient(135deg, #10b981, #059669)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  aria-label="Call attendee via Zadarma Click-to-Call"
+                >
+                  <span className={styles.btnIcon}>🟢</span>
+                  <span>
+                    {zadarmaDialing ? 'Connecting Zadarma...' : 'Call via Zadarma (Click-to-Call)'}
+                  </span>
+                </button>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <a
+                    href={phoneNumber ? `sip:${smsPhone || phoneNumber}` : '#'}
+                    className="btn btn-secondary btn-sm"
+                    onClick={onDeviceCallStarted}
+                    style={{
+                      pointerEvents: (!hasLead || !phoneNumber) ? 'none' : 'auto',
+                      opacity: (!hasLead || !phoneNumber) ? 0.5 : 1,
+                      textDecoration: 'none',
+                      fontSize: '12px',
+                      minHeight: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Dial directly using Zadarma Desktop / Mobile SIP App"
+                  >
+                    📲 Dial via Zadarma App (SIP)
+                  </a>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setShowZadarmaSettings(v => !v)}
+                    style={{
+                      fontSize: '12px',
+                      minHeight: '36px',
+                      border: '1px solid var(--border-subtle)',
+                    }}
+                  >
+                    {showZadarmaSettings ? '▲ Hide Settings' : '⚙️ Zadarma Setup'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                className={`btn btn-success ${styles.dialBtn}`}
+                onClick={onDeviceCallFinished}
+                style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)' }}
+                aria-label="Finish Zadarma call and log outcome"
+              >
+                <span className={styles.btnIcon}>✅</span>
+                <span>Call Finished — Log Notes &amp; Outcome</span>
+              </button>
+            )}
+
+            {zadarmaStatusMsg && (
+              <div style={{ fontSize: '12px', color: '#34d399', padding: '6px 10px', borderRadius: '6px', background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                {zadarmaStatusMsg}
+              </div>
+            )}
+            {zadarmaError && (
+              <div style={{ fontSize: '12px', color: '#fca5a5', padding: '6px 10px', borderRadius: '6px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                ⚠️ {zadarmaError}
+              </div>
+            )}
+
+            {showZadarmaSettings && (
+              <div
+                style={{
+                  padding: '10px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(16, 185, 129, 0.06)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#6ee7b7' }}>
+                  🔑 Zadarma API &amp; Extension Settings
+                </div>
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ fontSize: '12px', minHeight: '34px', padding: '4px 8px' }}
+                  placeholder="Zadarma API Key (from my.zadarma.com/api/)"
+                  value={zadarmaApiKey}
+                  onChange={e => setZadarmaApiKey(e.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                />
+                <input
+                  type="password"
+                  className="form-input"
+                  style={{ fontSize: '12px', minHeight: '34px', padding: '4px 8px' }}
+                  placeholder="Zadarma API Secret"
+                  value={zadarmaApiSecret}
+                  onChange={e => setZadarmaApiSecret(e.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                />
+                <input
+                  type="text"
+                  className="form-input"
+                  style={{ fontSize: '12px', minHeight: '34px', padding: '4px 8px' }}
+                  placeholder="PBX Extension / SIP ID (e.g. 100 or 123456)"
+                  value={zadarmaSip}
+                  onChange={e => setZadarmaSip(e.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleSaveZadarmaSettings}
+                  style={{ background: '#059669', minHeight: '34px', fontSize: '12px' }}
+                >
+                  💾 Save &amp; Connect Zadarma WebRTC
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           // Twilio Actions
           <>
@@ -435,7 +774,7 @@ export default function CallDialer({
       </div>
 
       {/* Quick Dispositions (no-answer scenarios) */}
-      {hasLead && (callMode === 'device' || isIdle) && (
+      {hasLead && (callMode === 'device' || callMode === 'zadarma' || isIdle) && (
         <div className={styles.quickActions}>
           <p className={styles.quickLabel}>Quick Log (No Answer / Unreachable):</p>
           <div className={styles.quickGrid}>
@@ -513,9 +852,10 @@ export function CallActionBar({
   formattedDeviceDuration,
 }) {
   const isTwilioActive = callState === 'active' || callState === 'ringing' || callState === 'connecting';
-  const isDeviceActive = callMode === 'device' && deviceCalling;
+  const isManualMode = callMode === 'device' || callMode === 'zadarma';
+  const isDeviceActive = isManualMode && deviceCalling;
   
-  if (callMode === 'device' ? !isDeviceActive : !isTwilioActive) return null;
+  if (isManualMode ? !isDeviceActive : !isTwilioActive) return null;
 
   return (
     <div className={styles.floatingActionBar} role="region" aria-label="Active call controls">
@@ -524,12 +864,12 @@ export function CallActionBar({
         <div className={styles.floatingMeta}>
           <span className={styles.floatingName}>{attendeeName || 'Active Call'}</span>
           <span className={styles.floatingTimer}>
-            {callMode === 'device' ? formattedDeviceDuration : (callState === 'ringing' ? 'Ringing...' : formattedDuration)}
+            {isManualMode ? formattedDeviceDuration : (callState === 'ringing' ? 'Ringing...' : formattedDuration)}
           </span>
         </div>
       </div>
       <div className={styles.floatingBtns}>
-        {callMode === 'device' ? (
+        {isManualMode ? (
           <button
             className={styles.floatingEndBtn}
             onClick={onFinishDeviceCall}

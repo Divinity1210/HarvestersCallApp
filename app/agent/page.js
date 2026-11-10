@@ -52,11 +52,11 @@ export default function AgentDashboard() {
     if (!selectedCampaign?.id) return;
     try {
       const stored = localStorage.getItem(`harvesters_call_mode_${selectedCampaign.id}`);
-      if (stored === 'device' || stored === 'twilio') {
+      if (stored === 'device' || stored === 'twilio' || stored === 'zadarma') {
         setModeOverride(stored);
       } else {
         const globalPref = localStorage.getItem('harvesters_call_mode_pref');
-        if (globalPref === 'device' || globalPref === 'twilio') {
+        if (globalPref === 'device' || globalPref === 'twilio' || globalPref === 'zadarma') {
           setModeOverride(globalPref);
         } else {
           setModeOverride(selectedCampaign.call_mode || 'device');
@@ -366,7 +366,7 @@ export default function AgentDashboard() {
   };
 
   // Determine the current phase
-  const isCallActive = callMode === 'device'
+  const isCallActive = (callMode === 'device' || callMode === 'zadarma')
     ? deviceCalling
     : (call.callState === 'active' || call.callState === 'ringing' || call.callState === 'connecting');
 
@@ -418,6 +418,14 @@ export default function AgentDashboard() {
               title="Twilio WebRTC in-browser calling with AI recording & QA"
             >
               ☎️ Twilio
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${callMode === 'zadarma' ? 'btn-primary' : 'btn-ghost'} ${styles.modeToggleBtn}`}
+              onClick={() => handleSwitchMode('zadarma')}
+              title="Zadarma VoIP calling (~60% cheaper per-second UK rates)"
+            >
+              🟢 Zadarma
             </button>
             <button
               type="button"
@@ -677,6 +685,8 @@ export default function AgentDashboard() {
             onToggleMute={call.toggleMute}
             onSkip={handleSkip}
             hasLead={!!lead.currentLead}
+            leadId={lead.currentLead?.id}
+            callId={lead.currentCall?.id}
             campaignId={selectedCampaign?.id}
             attendeeName={lead.currentLead?.full_name}
             agentName={profile?.full_name}
