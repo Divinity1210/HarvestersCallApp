@@ -201,7 +201,7 @@ export default function AgentDashboard() {
     }, 1000);
   };
 
-  const handleDeviceCallFinished = (duration) => {
+  const handleDeviceCallFinished = async (duration) => {
     if (deviceTimerRef.current) {
       clearInterval(deviceTimerRef.current);
       deviceTimerRef.current = null;
@@ -209,6 +209,25 @@ export default function AgentDashboard() {
     setDeviceCalling(false);
     setShowResults(true);
     setMobileTab('results');
+
+    // In Zadarma mode, check if Zadarma PBX recorded the call and trigger Gemini AI audio analysis
+    if (callMode === 'zadarma' && lead.currentCall?.id) {
+      try {
+        const res = await fetch('/api/zadarma', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'process-recording',
+            callId: lead.currentCall.id,
+            phoneNumber: lead.currentLead?.phone_number,
+          }),
+        });
+        const data = await res.json();
+        if (data?.recorded) {
+          lead.pollForResults(lead.currentCall.id);
+        }
+      } catch {}
+    }
   };
 
   const formattedDeviceDuration = (() => {
@@ -300,7 +319,7 @@ export default function AgentDashboard() {
   const handleConfirmResults = async (confirmedData) => {
     const success = await lead.submitResults(lead.currentCall?.id, {
       ...confirmedData,
-      durationSeconds: callMode === 'device' ? deviceDuration : call.callDuration,
+      durationSeconds: (callMode === 'device' || callMode === 'zadarma') ? deviceDuration : call.callDuration,
     });
     if (success) {
       if (deviceTimerRef.current) {

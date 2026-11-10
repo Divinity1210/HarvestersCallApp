@@ -129,7 +129,7 @@ export default function CallDialer({
   const [showZadarmaSettings, setShowZadarmaSettings] = useState(false);
   const [zadarmaApiKey, setZadarmaApiKey] = useState('');
   const [zadarmaApiSecret, setZadarmaApiSecret] = useState('');
-  const [zadarmaSip, setZadarmaSip] = useState('660625');
+  const [zadarmaSip, setZadarmaSip] = useState('604556-100');
 
   useEffect(() => {
     if (callMode !== 'zadarma') return;

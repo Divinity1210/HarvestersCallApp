@@ -1,13 +1,15 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { query } from '@/lib/db';
 import { getSessionUser } from '@/lib/auth';
 import {
   callZadarmaApi,
+  fetchZadarmaRecordingUrl,
   getZadarmaConfig,
   getZadarmaWebRtcKey,
   normalizeZadarmaPhone,
   triggerZadarmaCallback,
 } from '@/lib/zadarma';
+import { processCallRecording } from '@/lib/ai/callAnalysis';
 
 /**
  * GET /api/zadarma
@@ -109,6 +111,58 @@ export async function POST(request) {
         balance: balRes?.balance ?? null,
         currency: balRes?.currency || 'USD',
         webrtcKey,
+      });
+    }
+
+    if (action === 'process-recording') {
+      if (!callId) {
+        return NextResponse.json({ recorded: false, reason: 'No callId provided' });
+      }
+      const callRows = await query(
+        `SELECT c.id, c.campaign_id, l.phone_number
+         FROM calls c
+         LEFT JOIN leads l ON l.id = c.lead_id
+         WHERE c.id = $1 LIMIT 1`,
+        [callId]
+      );
+      if (callRows.length === 0) {
+        return NextResponse.json({ recorded: false, reason: 'Call not found' });
+      }
+      const callRow = callRows[0];
+      const recInfo = await fetchZadarmaRecordingUrl({
+        phoneNumber: phoneNumber || callRow.phone_number,
+        overrides,
+      }).catch(() => null);
+
+      if (!recInfo?.recordingUrl) {
+        return NextResponse.json({ recorded: false });
+      }
+
+      await query(
+        `UPDATE calls
+         SET twilio_recording_sid = $1, recording_url = $2, recording_status = 'completed'
+         WHERE id = $3`,
+        [recInfo.zadarmaCallId, recInfo.recordingUrl, callRow.id]
+      );
+
+      await query(
+        `INSERT INTO qa_results (call_id, processing_status)
+         VALUES ($1, 'pending')
+         ON CONFLICT (call_id) DO NOTHING`,
+        [callRow.id]
+      );
+
+      after(() =>
+        processCallRecording({
+          callId: callRow.id,
+          recordingUrl: recInfo.recordingUrl,
+          campaignId: callRow.campaign_id,
+        })
+      );
+
+      return NextResponse.json({
+        recorded: true,
+        zadarmaCallId: recInfo.zadarmaCallId,
       });
     }
 
