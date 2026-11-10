@@ -51,7 +51,7 @@ export async function GET() {
     return NextResponse.json({
       configured: true,
       serverConfigured: true,
-      sip: cfg.sip,
+      sip: cfg.webrtcSip || cfg.sip,
       balance,
       currency,
       webrtcKey,
@@ -102,9 +102,10 @@ export async function POST(request) {
         if (keyRes?.key) webrtcKey = keyRes.key;
       } catch {}
 
+      const effCfg = getZadarmaConfig({ ...overrides, sip: fromExtension || cfg.sip });
       return NextResponse.json({
         configured: true,
-        sip: fromExtension || cfg.sip,
+        sip: effCfg.webrtcSip || effCfg.sip,
         balance: balRes?.balance ?? null,
         currency: balRes?.currency || 'USD',
         webrtcKey,

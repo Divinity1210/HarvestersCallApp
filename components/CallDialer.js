@@ -129,7 +129,7 @@ export default function CallDialer({
   const [showZadarmaSettings, setShowZadarmaSettings] = useState(false);
   const [zadarmaApiKey, setZadarmaApiKey] = useState('');
   const [zadarmaApiSecret, setZadarmaApiSecret] = useState('');
-  const [zadarmaSip, setZadarmaSip] = useState('100');
+  const [zadarmaSip, setZadarmaSip] = useState('660625');
 
   useEffect(() => {
     if (callMode !== 'zadarma') return;
@@ -153,7 +153,7 @@ export default function CallDialer({
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'status',
-                fromExtension: localOverrides.sip || '100',
+                fromExtension: localOverrides.sip || '660625',
                 overrides: localOverrides,
               }),
             })
@@ -162,10 +162,10 @@ export default function CallDialer({
         if (data?.configured) {
           setZadarmaReady(true);
           setZadarmaBalance(data.balance);
-          setZadarmaCurrency(data.currency || 'USD');
-          if (data.sip) setZadarmaSip(prev => prev || data.sip);
+          setZadarmaCurrency(data.currency || 'GBP');
+          if (data.sip && !localOverrides.sip) setZadarmaSip(data.sip);
           if (data.webrtcKey) {
-            loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || localOverrides.sip || '100');
+            loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || localOverrides.sip || '660625');
           }
         } else {
           setZadarmaReady(false);
@@ -186,10 +186,10 @@ export default function CallDialer({
           window.zadarmaWidgetFn(
             webrtcKey,
             sipExt,
-            'rounded',
+            'square',
             'en',
             true,
-            "{right:'16px',bottom:'16px'}"
+            { right: '16px', bottom: '16px' }
           );
         } catch (e) {
           console.warn('Zadarma widget init warning:', e);
@@ -204,12 +204,12 @@ export default function CallDialer({
 
     const s1 = document.createElement('script');
     s1.id = 'zadarma-webrtc-lib';
-    s1.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v8/js/loader-phone-lib.js?v=23';
+    s1.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/loader-phone-lib.js?sub_v=3';
     s1.async = true;
     s1.onload = () => {
       const s2 = document.createElement('script');
       s2.id = 'zadarma-webrtc-fn';
-      s2.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v8/js/loader-phone-fn.js?v=23';
+      s2.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/loader-phone-fn.js?sub_v=2';
       s2.async = true;
       s2.onload = initFn;
       document.body.appendChild(s2);
@@ -223,7 +223,7 @@ export default function CallDialer({
     const overrides = {
       apiKey: zadarmaApiKey.trim(),
       apiSecret: zadarmaApiSecret.trim(),
-      sip: zadarmaSip.trim() || '100',
+      sip: zadarmaSip.trim() || '660625',
     };
     try {
       localStorage.setItem('harvesters_zadarma_cfg', JSON.stringify(overrides));
@@ -245,9 +245,9 @@ export default function CallDialer({
       }
       setZadarmaReady(true);
       setZadarmaBalance(data.balance);
-      setZadarmaCurrency(data.currency || 'USD');
+      setZadarmaCurrency(data.currency || 'GBP');
       if (data.webrtcKey) {
-        loadZadarmaWebRtcWidget(data.webrtcKey, overrides.sip);
+        loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || overrides.sip);
       }
       setZadarmaStatusMsg('✅ Zadarma connected & WebRTC widget ready!');
       setShowZadarmaSettings(false);
@@ -265,7 +265,7 @@ export default function CallDialer({
     const overrides = {
       apiKey: zadarmaApiKey.trim(),
       apiSecret: zadarmaApiSecret.trim(),
-      sip: zadarmaSip.trim() || '100',
+      sip: zadarmaSip.trim() || '660625',
     };
 
     try {
@@ -536,7 +536,7 @@ export default function CallDialer({
                   type="text"
                   className="form-input"
                   style={{ fontSize: '12px', minHeight: '34px', padding: '4px 8px' }}
-                  placeholder="PBX Extension / SIP ID (e.g. 100 or 123456)"
+                  placeholder="SIP ID or PBX Extension (e.g. 660625 or 604556-100)"
                   value={zadarmaSip}
                   onChange={e => setZadarmaSip(e.target.value)}
                   autoComplete="off"
