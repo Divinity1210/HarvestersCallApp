@@ -202,6 +202,9 @@ export default function AgentDashboard() {
   };
 
   const handleDeviceCallFinished = async (duration) => {
+    if (typeof window !== 'undefined' && window.zdrmWPhI && typeof window.zdrmWPhI.finishCall === 'function') {
+      try { window.zdrmWPhI.finishCall(); } catch {}
+    }
     if (deviceTimerRef.current) {
       clearInterval(deviceTimerRef.current);
       deviceTimerRef.current = null;
@@ -341,6 +344,9 @@ export default function AgentDashboard() {
   };
 
   const handleSkip = async (disposition) => {
+    if (typeof window !== 'undefined' && window.zdrmWPhI && typeof window.zdrmWPhI.finishCall === 'function') {
+      try { window.zdrmWPhI.finishCall(); } catch {}
+    }
     if (deviceTimerRef.current) {
       clearInterval(deviceTimerRef.current);
       deviceTimerRef.current = null;

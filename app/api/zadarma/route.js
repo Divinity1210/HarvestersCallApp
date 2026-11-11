@@ -11,6 +11,18 @@ import {
 } from '@/lib/zadarma';
 import { processCallRecording } from '@/lib/ai/callAnalysis';
 
+const PBX_EXTENSIONS = ['604556-100', '604556-101', '604556-102'];
+
+function pickAgentExtension(userId) {
+  if (!userId) return PBX_EXTENSIONS[0];
+  let hash = 0;
+  const s = String(userId);
+  for (let i = 0; i < s.length; i++) {
+    hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return PBX_EXTENSIONS[hash % PBX_EXTENSIONS.length];
+}
+
 /**
  * GET /api/zadarma
  * Returns Zadarma configuration status and optional WebRTC key / balance if server env vars are set.
@@ -22,12 +34,13 @@ export async function GET() {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const cfg = getZadarmaConfig();
+    const assignedSip = pickAgentExtension(session.id);
+    const cfg = getZadarmaConfig({ sip: assignedSip });
     if (!cfg.configured) {
       return NextResponse.json({
         configured: false,
         serverConfigured: false,
-        sip: cfg.sip || '100',
+        sip: cfg.sip || '604556-100',
       });
     }
 
@@ -39,12 +52,12 @@ export async function GET() {
       const balRes = await callZadarmaApi('/v1/info/balance/', {}, 'GET');
       if (balRes?.status === 'success') {
         balance = balRes.balance;
-        currency = balRes.currency || 'USD';
+        currency = balRes.currency || 'GBP';
       }
     } catch {}
 
     try {
-      const keyRes = await getZadarmaWebRtcKey(cfg.sip);
+      const keyRes = await getZadarmaWebRtcKey(cfg.webrtcSip || cfg.sip);
       if (keyRes?.status === 'success' && keyRes.key) {
         webrtcKey = keyRes.key;
       }
@@ -111,6 +124,29 @@ export async function POST(request) {
         balance: balRes?.balance ?? null,
         currency: balRes?.currency || 'USD',
         webrtcKey,
+      });
+    }
+
+    if (action === 'webrtc-log') {
+      let rawPhone = phoneNumber;
+      if (!rawPhone && leadId) {
+        const rows = await query(
+          `SELECT phone_number FROM leads WHERE id = $1 LIMIT 1`,
+          [leadId]
+        );
+        if (rows.length > 0) rawPhone = rows[0].phone_number;
+      }
+      const cleanTo = normalizeZadarmaPhone(rawPhone);
+      if (callId) {
+        await query(
+          `UPDATE calls SET twilio_call_sid = $1 WHERE id = $2`,
+          [`zadarma-${Date.now()}`, callId]
+        ).catch(() => {});
+      }
+      return NextResponse.json({
+        success: true,
+        to: cleanTo,
+        sip: cfg.webrtcSip || cfg.sip,
       });
     }
 

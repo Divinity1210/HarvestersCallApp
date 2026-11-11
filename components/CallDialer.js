@@ -180,25 +180,40 @@ export default function CallDialer({
 
   const loadZadarmaWebRtcWidget = (webrtcKey, sipExt) => {
     if (typeof window === 'undefined' || !webrtcKey || !sipExt) return;
-    const initFn = () => {
-      if (typeof window.zadarmaWidgetFn === 'function') {
-        try {
-          window.zadarmaWidgetFn(
-            webrtcKey,
-            sipExt,
-            'square',
-            'en',
-            true,
-            { right: '16px', bottom: '16px' }
-          );
-        } catch (e) {
-          console.warn('Zadarma widget init warning:', e);
+    let attempts = 0;
+    const waitAndInit = () => {
+      attempts += 1;
+      const depsReady =
+        typeof window.zadarmaWidgetFn === 'function' &&
+        typeof window.zdrmWebrtcPhoneInterface === 'function' &&
+        typeof window.ZadarmaWebphoneAPI === 'function' &&
+        typeof window.JsSIP !== 'undefined';
+
+      if (depsReady) {
+        if (!window.zdrmWPhI) {
+          try {
+            window.zadarmaWidgetFn(
+              webrtcKey,
+              sipExt,
+              'square',
+              'en',
+              true,
+              { right: '16px', bottom: '16px' }
+            );
+          } catch (e) {
+            console.warn('Zadarma widget init warning:', e);
+          }
         }
+        return;
+      }
+
+      if (attempts < 50) {
+        setTimeout(waitAndInit, 150);
       }
     };
 
     if (document.getElementById('zadarma-webrtc-lib')) {
-      initFn();
+      waitAndInit();
       return;
     }
 
@@ -211,7 +226,7 @@ export default function CallDialer({
       s2.id = 'zadarma-webrtc-fn';
       s2.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/loader-phone-fn.js?sub_v=2';
       s2.async = true;
-      s2.onload = initFn;
+      s2.onload = waitAndInit;
       document.body.appendChild(s2);
     };
     document.body.appendChild(s1);
@@ -223,7 +238,7 @@ export default function CallDialer({
     const overrides = {
       apiKey: zadarmaApiKey.trim(),
       apiSecret: zadarmaApiSecret.trim(),
-      sip: zadarmaSip.trim() || '660625',
+      sip: zadarmaSip.trim() || '604556-100',
     };
     try {
       localStorage.setItem('harvesters_zadarma_cfg', JSON.stringify(overrides));
@@ -265,15 +280,16 @@ export default function CallDialer({
     const overrides = {
       apiKey: zadarmaApiKey.trim(),
       apiSecret: zadarmaApiSecret.trim(),
-      sip: zadarmaSip.trim() || '660625',
+      sip: zadarmaSip.trim() || '604556-100',
     };
 
     try {
+      // 1. Log the Zadarma WebRTC call on the backend and get normalized phone number
       const res = await fetch('/api/zadarma', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          action: 'call',
+          action: 'webrtc-log',
           leadId,
           callId,
           phoneNumber,
@@ -283,9 +299,48 @@ export default function CallDialer({
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to initiate Zadarma call');
+        throw new Error(data.error || 'Failed to prepare Zadarma call');
       }
-      setZadarmaStatusMsg(`📞 Ringing your Zadarma extension (${data.from}) → bridging ${attendeeName || 'attendee'}...`);
+
+      const dialDigits = String(data.to || smsPhone || phoneNumber || '').replace(/[^0-9]/g, '');
+      if (!dialDigits) {
+        throw new Error('Invalid attendee phone number');
+      }
+
+      // 2. Dial directly in the browser via Zadarma WebRTC (JsSIP)
+      let dialedInBrowser = false;
+      if (typeof window !== 'undefined') {
+        const inputEl = document.getElementById('zdrm-webphone-phonenumber-input');
+        if (inputEl && window.zdrmWPhI && typeof window.zdrmWPhI.callNum === 'function') {
+          inputEl.removeAttribute('disabled');
+          inputEl.value = dialDigits;
+          window.zdrmWPhI.callNum();
+          dialedInBrowser = true;
+        } else if (window.zdrmWebPhone && typeof window.zdrmWebPhone.regToCall === 'function') {
+          window.zdrmWebPhone.regToCall(dialDigits);
+          dialedInBrowser = true;
+        }
+      }
+
+      if (!dialedInBrowser) {
+        // Fallback to Click-to-Call API if browser WebRTC widget was blocked
+        await fetch('/api/zadarma', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'call',
+            leadId,
+            callId,
+            phoneNumber,
+            fromExtension: overrides.sip,
+            overrides,
+          }),
+        });
+      }
+
+      setZadarmaStatusMsg(
+        `📞 Dialing ${attendeeName || dialDigits} directly in browser via Zadarma (+447893931272)...`
+      );
       if (onDeviceCallStarted) onDeviceCallStarted();
     } catch (err) {
       setZadarmaError(err.message);
@@ -473,7 +528,12 @@ export default function CallDialer({
             ) : (
               <button
                 className={`btn btn-success ${styles.dialBtn}`}
-                onClick={onDeviceCallFinished}
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.zdrmWPhI && typeof window.zdrmWPhI.finishCall === 'function') {
+                    try { window.zdrmWPhI.finishCall(); } catch {}
+                  }
+                  if (onDeviceCallFinished) onDeviceCallFinished();
+                }}
                 style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)' }}
                 aria-label="Finish Zadarma call and log outcome"
               >
