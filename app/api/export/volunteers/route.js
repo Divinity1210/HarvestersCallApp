@@ -24,16 +24,31 @@ export async function GET(request) {
         l.phone_number,
         l.metadata as lead_metadata,
         u.full_name as agent_name,
-        qa.next_steps_confirmed,
-        qa.testimony_confirmed,
-        qa.transcript_summary
+        CASE 
+          WHEN qa.next_steps_confirmed IS NOT NULL AND jsonb_typeof(qa.next_steps_confirmed) = 'array' AND jsonb_array_length(qa.next_steps_confirmed) > 0 
+          THEN qa.next_steps_confirmed 
+          WHEN qa.next_steps_extracted IS NOT NULL AND jsonb_typeof(qa.next_steps_extracted) = 'array'
+          THEN qa.next_steps_extracted
+          ELSE '[]'::jsonb
+        END as effective_next_steps,
+        COALESCE(NULLIF(trim(qa.testimony_confirmed), ''), NULLIF(trim(qa.testimony_extracted), ''), qa.transcript_summary, '') as effective_notes
       FROM qa_results qa
       JOIN calls c ON c.id = qa.call_id
       LEFT JOIN leads l ON l.id = c.lead_id
       LEFT JOIN users u ON u.id = c.agent_id
-      WHERE (
-        qa.next_steps_confirmed::text ILIKE '%volunteer%yes%'
-        OR qa.next_steps_confirmed::text ILIKE '%serve%yes%'
+      WHERE EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(
+          CASE 
+            WHEN qa.next_steps_confirmed IS NOT NULL AND jsonb_typeof(qa.next_steps_confirmed) = 'array' AND jsonb_array_length(qa.next_steps_confirmed) > 0 
+            THEN qa.next_steps_confirmed 
+            WHEN qa.next_steps_extracted IS NOT NULL AND jsonb_typeof(qa.next_steps_extracted) = 'array'
+            THEN qa.next_steps_extracted
+            ELSE '[]'::jsonb
+          END
+        ) AS elem(val)
+        WHERE (elem.val ILIKE '%volunteer%' OR elem.val ILIKE '%serve%')
+          AND elem.val ILIKE '%yes%'
       )
       AND ($1::uuid IS NULL OR c.campaign_id = $1::uuid)
       ORDER BY c.initiated_at DESC
@@ -65,7 +80,7 @@ export async function GET(request) {
       const date = r.initiated_at ? new Date(r.initiated_at).toLocaleString() : '';
 
       // Parse answers
-      const answers = Array.isArray(r.next_steps_confirmed) ? r.next_steps_confirmed : [];
+      const answers = Array.isArray(r.effective_next_steps) ? r.effective_next_steps : [];
       let attendingStatus = 'Not recorded';
       let transportNeeded = 'Not recorded';
 
@@ -80,7 +95,7 @@ export async function GET(request) {
         }
       }
 
-      const notes = r.testimony_confirmed || r.transcript_summary || '';
+      const notes = r.effective_notes || '';
 
       return [
         csvEscape(r.lead_name || 'Unknown'),

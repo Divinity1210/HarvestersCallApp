@@ -23,13 +23,21 @@ export async function GET(request) {
         l.phone_number,
         l.metadata as lead_metadata,
         u.full_name as agent_name,
-        qa.next_steps_confirmed
+        CASE 
+          WHEN qa.next_steps_confirmed IS NOT NULL AND jsonb_typeof(qa.next_steps_confirmed) = 'array' AND jsonb_array_length(qa.next_steps_confirmed) > 0 
+          THEN qa.next_steps_confirmed 
+          WHEN qa.next_steps_extracted IS NOT NULL AND jsonb_typeof(qa.next_steps_extracted) = 'array'
+          THEN qa.next_steps_extracted
+          ELSE '[]'::jsonb
+        END as next_steps_confirmed
       FROM qa_results qa
       JOIN calls c ON c.id = qa.call_id
       LEFT JOIN leads l ON l.id = c.lead_id
       LEFT JOIN users u ON u.id = c.agent_id
-      WHERE qa.next_steps_confirmed IS NOT NULL 
-        AND qa.next_steps_confirmed != '[]'::jsonb
+      WHERE (
+        (qa.next_steps_confirmed IS NOT NULL AND jsonb_typeof(qa.next_steps_confirmed) = 'array' AND jsonb_array_length(qa.next_steps_confirmed) > 0)
+        OR (qa.next_steps_extracted IS NOT NULL AND jsonb_typeof(qa.next_steps_extracted) = 'array' AND jsonb_array_length(qa.next_steps_extracted) > 0)
+      )
         AND ($1::uuid IS NULL OR c.campaign_id = $1::uuid)
       ORDER BY qa.created_at DESC
     `, [campaignId]);

@@ -153,27 +153,49 @@ export async function GET(request) {
 
     // 6. Attendee Feedback Feed (supports ?filter=volunteers, attending, transport, testimonies, all)
     const filter = searchParams.get('filter') || 'all';
+    const effectiveNextStepsExpr = `
+      CASE 
+        WHEN qa.next_steps_confirmed IS NOT NULL AND jsonb_typeof(qa.next_steps_confirmed) = 'array' AND jsonb_array_length(qa.next_steps_confirmed) > 0 
+        THEN qa.next_steps_confirmed 
+        WHEN qa.next_steps_extracted IS NOT NULL AND jsonb_typeof(qa.next_steps_extracted) = 'array'
+        THEN qa.next_steps_extracted
+        ELSE '[]'::jsonb
+      END
+    `;
+
     let feedbackCondition = `
       (
-        (qa.next_steps_confirmed IS NOT NULL AND jsonb_array_length(qa.next_steps_confirmed) > 0)
+        jsonb_array_length(${effectiveNextStepsExpr}) > 0
         OR (qa.testimony_confirmed IS NOT NULL AND length(trim(qa.testimony_confirmed)) > 0)
+        OR (qa.testimony_extracted IS NOT NULL AND length(trim(qa.testimony_extracted)) > 0)
       )
     `;
 
     if (filter === 'volunteers') {
       feedbackCondition = `
-        (
-          qa.next_steps_confirmed::text ILIKE '%volunteer%yes%'
-          OR qa.next_steps_confirmed::text ILIKE '%serve%yes%'
+        EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
+          WHERE (elem.val ILIKE '%volunteer%' OR elem.val ILIKE '%serve%')
+            AND elem.val ILIKE '%yes%'
         )
       `;
     } else if (filter === 'attending') {
-      feedbackCondition = `(qa.next_steps_confirmed::text ILIKE '%attend%yes%')`;
+      feedbackCondition = `
+        EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
+          WHERE elem.val ILIKE '%attend%'
+            AND elem.val ILIKE '%yes%'
+        )
+      `;
     } else if (filter === 'transport') {
       feedbackCondition = `
-        (
-          qa.next_steps_confirmed::text ILIKE '%bus%yes%'
-          OR qa.next_steps_confirmed::text ILIKE '%transport%yes%'
+        EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
+          WHERE (elem.val ILIKE '%bus%' OR elem.val ILIKE '%transport%')
+            AND elem.val ILIKE '%yes%'
         )
       `;
     } else if (filter === 'testimonies') {
@@ -196,8 +218,8 @@ export async function GET(request) {
         l.phone_number,
         l.metadata as lead_metadata,
         u.full_name as agent_name,
-        qa.next_steps_confirmed,
-        qa.testimony_confirmed,
+        ${effectiveNextStepsExpr} as next_steps_confirmed,
+        COALESCE(NULLIF(trim(qa.testimony_confirmed), ''), NULLIF(trim(qa.testimony_extracted), '')) as testimony_confirmed,
         qa.transcript_summary,
         qa.script_adherence_score
       FROM qa_results qa
@@ -207,7 +229,7 @@ export async function GET(request) {
       WHERE c.campaign_id = $1
         AND ${feedbackCondition}
       ORDER BY c.initiated_at DESC
-      LIMIT 500
+      LIMIT 5000
     `, [campaignId]);
 
     return NextResponse.json({
