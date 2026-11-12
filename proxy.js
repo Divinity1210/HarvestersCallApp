@@ -27,6 +27,7 @@ const PUBLIC_PREFIXES = [
   '/api/twilio/voice',
   '/api/twilio/call-status',
   '/api/twilio/recording-status',
+  '/api/zadarma/webhook',
 ];
 
 const ADMIN_PREFIXES = [

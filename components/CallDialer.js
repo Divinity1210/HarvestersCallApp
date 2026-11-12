@@ -11,6 +11,37 @@ import {
 import styles from './CallDialer.module.css';
 
 /**
+ * Normalizes any UK / NG / international number to strict E.164 WITH leading '+'
+ * (e.g. '+447435805051').
+ * CRITICAL: Zadarma's PBX has Default Home Country = 44 (UK). Passing '447435805051'
+ * WITHOUT '+' causes Zadarma's PBX dialplan to prepend a second '44' ('44447435805051'),
+ * failing immediately with hangupcause=1 (Unallocated Number). Keeping '+' tells Zadarma
+ * the number already includes the country code.
+ */
+function toZadarmaE164(raw) {
+  if (!raw) return '';
+  let digits = String(raw).replace(/[^0-9]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.startsWith('44447') && digits.length >= 14) {
+    digits = digits.slice(2);
+  }
+  if (digits.startsWith('440') && digits.length === 13) {
+    digits = '44' + digits.slice(3);
+  }
+  if (digits.length === 11 && /^0[1237]\d{9}$/.test(digits)) {
+    return '+44' + digits.slice(1);
+  }
+  if (digits.length === 10 && digits.startsWith('7')) {
+    return '+44' + digits;
+  }
+  if (digits.length === 11 && /^0[89][01]\d{8}$/.test(digits)) {
+    return '+234' + digits.slice(1);
+  }
+  return '+' + digits;
+}
+
+/**
  * CallDialer — WebRTC and Device/SIM call control panel.
  * Supports:
  * 1. 'device' mode: Direct mobile phone (SIM / Cellular) dialing via tel: link,
@@ -121,6 +152,7 @@ export default function CallDialer({
 
   // Zadarma state
   const [zadarmaReady, setZadarmaReady] = useState(false);
+  const [zadarmaWidgetReady, setZadarmaWidgetReady] = useState(false);
   const [zadarmaBalance, setZadarmaBalance] = useState(null);
   const [zadarmaCurrency, setZadarmaCurrency] = useState('USD');
   const [zadarmaDialing, setZadarmaDialing] = useState(false);
@@ -133,6 +165,9 @@ export default function CallDialer({
 
   useEffect(() => {
     if (callMode !== 'zadarma') return;
+    if (typeof window !== 'undefined' && window.zdrmWPhI) {
+      setZadarmaWidgetReady(true);
+    }
     let localOverrides = {};
     try {
       const saved = localStorage.getItem('harvesters_zadarma_cfg');
@@ -153,7 +188,7 @@ export default function CallDialer({
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 action: 'status',
-                fromExtension: localOverrides.sip || '660625',
+                fromExtension: localOverrides.sip || '604556-100',
                 overrides: localOverrides,
               }),
             })
@@ -165,7 +200,7 @@ export default function CallDialer({
           setZadarmaCurrency(data.currency || 'GBP');
           if (data.sip && !localOverrides.sip) setZadarmaSip(data.sip);
           if (data.webrtcKey) {
-            loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || localOverrides.sip || '660625');
+            loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || localOverrides.sip || '604556-100');
           }
         } else {
           setZadarmaReady(false);
@@ -177,6 +212,41 @@ export default function CallDialer({
 
     checkZadarmaStatus();
   }, [callMode]);
+
+  // Monitor live Zadarma WebRTC call audio & status while in an active Zadarma call
+  useEffect(() => {
+    if (callMode !== 'zadarma' || !deviceCalling || typeof window === 'undefined') return;
+    const dialTarget = toZadarmaE164(phoneNumber || smsPhone);
+    const interval = setInterval(() => {
+      // Ensure remote WebRTC audio stream is never muted on iOS Safari / Mobile Chrome
+      const remoteEl = document.getElementById('zdrm-webRTCRemoteView');
+      if (remoteEl) {
+        if (remoteEl.muted) remoteEl.muted = false;
+        if (remoteEl.volume < 1) remoteEl.volume = 1;
+      }
+
+      const errEl = document.getElementById('zdrm-webrtc-error');
+      const errTxt = errEl ? (errEl.textContent || '').trim() : '';
+      if (errTxt && errEl.offsetParent !== null) {
+        setZadarmaError(errTxt);
+      }
+
+      const wp = window.zdrmWebPhone;
+      if (wp) {
+        if (wp.talking === 1) {
+          setZadarmaStatusMsg(
+            `🔊 Connected! Live 2-way audio active with ${attendeeName || dialTarget}`
+          );
+        } else if (wp.callState === 'outgoing') {
+          setZadarmaStatusMsg(
+            `📞 Ringing ${attendeeName || dialTarget} (${dialTarget}) via +447893931272...`
+          );
+        }
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [callMode, deviceCalling, attendeeName, phoneNumber, smsPhone]);
 
   const loadZadarmaWebRtcWidget = (webrtcKey, sipExt) => {
     if (typeof window === 'undefined' || !webrtcKey || !sipExt) return;
@@ -204,10 +274,21 @@ export default function CallDialer({
             console.warn('Zadarma widget init warning:', e);
           }
         }
+        // Poll briefly until zdrmWPhI finishes constructing its DOM input
+        let domChecks = 0;
+        const waitDom = () => {
+          domChecks += 1;
+          if (window.zdrmWPhI && document.getElementById('zdrm-webphone-phonenumber-input')) {
+            setZadarmaWidgetReady(true);
+            return;
+          }
+          if (domChecks < 30) setTimeout(waitDom, 150);
+        };
+        waitDom();
         return;
       }
 
-      if (attempts < 50) {
+      if (attempts < 60) {
         setTimeout(waitAndInit, 150);
       }
     };
@@ -271,82 +352,81 @@ export default function CallDialer({
     }
   };
 
-  const handleZadarmaStartCall = async () => {
+  const handleZadarmaStartCall = () => {
     if (!hasLead) return;
-    setZadarmaDialing(true);
     setZadarmaError('');
     setZadarmaStatusMsg('');
 
+    // CRITICAL #1: Always keep the '+' prefix (e.g. '+447435805051') so Zadarma PBX
+    // does NOT prepend a second '44' country code ('44447...').
+    const dialTarget = toZadarmaE164(phoneNumber || smsPhone);
+    if (!dialTarget || dialTarget.length < 8) {
+      setZadarmaError('Invalid attendee phone number');
+      return;
+    }
+
+    // CRITICAL #2: Trigger WebRTC audio + JsSIP call SYNCHRONOUSLY inside the tap gesture
+    // (before any async fetch) so Mobile Chrome & iOS Safari unlock remote audio & ringback!
+    let dialedInBrowser = false;
+    if (typeof window !== 'undefined') {
+      ['zdrm-webRTCRemoteView', 'zdrm-outgoingRing', 'zdrm-busy', 'zdrm-hangup'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.muted = false;
+          el.volume = id === 'zdrm-webRTCRemoteView' ? 1 : 0.7;
+        }
+      });
+
+      const inputEl = document.getElementById('zdrm-webphone-phonenumber-input');
+      if (inputEl && window.zdrmWPhI && typeof window.zdrmWPhI.callNum === 'function') {
+        try {
+          if (window.zdrmWPhI.status === 'call') {
+            window.zdrmWPhI.finishCall();
+          }
+        } catch {}
+        inputEl.removeAttribute('disabled');
+        inputEl.value = dialTarget;
+        window.zdrmWPhI.callNum();
+        dialedInBrowser = true;
+      } else if (window.zdrmWebPhone && typeof window.zdrmWebPhone.call === 'function') {
+        window.zdrmWebPhone.call(dialTarget);
+        dialedInBrowser = true;
+      }
+    }
+
+    if (!dialedInBrowser) {
+      setZadarmaError(
+        'Zadarma browser audio is still finishing setup (takes ~2 seconds). Please tap Call again now!'
+      );
+      return;
+    }
+
+    setZadarmaDialing(true);
+    setZadarmaStatusMsg(
+      `📞 Dialing ${attendeeName || dialTarget} (${dialTarget}) via Zadarma (+447893931272)...`
+    );
+    if (onDeviceCallStarted) onDeviceCallStarted();
+
+    // Log call metadata in the background (non-blocking so user gesture stays intact)
     const overrides = {
       apiKey: zadarmaApiKey.trim(),
       apiSecret: zadarmaApiSecret.trim(),
       sip: zadarmaSip.trim() || '604556-100',
     };
-
-    try {
-      // 1. Log the Zadarma WebRTC call on the backend and get normalized phone number
-      const res = await fetch('/api/zadarma', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'webrtc-log',
-          leadId,
-          callId,
-          phoneNumber,
-          fromExtension: overrides.sip,
-          overrides,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to prepare Zadarma call');
-      }
-
-      const dialDigits = String(data.to || smsPhone || phoneNumber || '').replace(/[^0-9]/g, '');
-      if (!dialDigits) {
-        throw new Error('Invalid attendee phone number');
-      }
-
-      // 2. Dial directly in the browser via Zadarma WebRTC (JsSIP)
-      let dialedInBrowser = false;
-      if (typeof window !== 'undefined') {
-        const inputEl = document.getElementById('zdrm-webphone-phonenumber-input');
-        if (inputEl && window.zdrmWPhI && typeof window.zdrmWPhI.callNum === 'function') {
-          inputEl.removeAttribute('disabled');
-          inputEl.value = dialDigits;
-          window.zdrmWPhI.callNum();
-          dialedInBrowser = true;
-        } else if (window.zdrmWebPhone && typeof window.zdrmWebPhone.regToCall === 'function') {
-          window.zdrmWebPhone.regToCall(dialDigits);
-          dialedInBrowser = true;
-        }
-      }
-
-      if (!dialedInBrowser) {
-        // Fallback to Click-to-Call API if browser WebRTC widget was blocked
-        await fetch('/api/zadarma', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'call',
-            leadId,
-            callId,
-            phoneNumber,
-            fromExtension: overrides.sip,
-            overrides,
-          }),
-        });
-      }
-
-      setZadarmaStatusMsg(
-        `📞 Dialing ${attendeeName || dialDigits} directly in browser via Zadarma (+447893931272)...`
-      );
-      if (onDeviceCallStarted) onDeviceCallStarted();
-    } catch (err) {
-      setZadarmaError(err.message);
-    } finally {
-      setZadarmaDialing(false);
-    }
+    fetch('/api/zadarma', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'webrtc-log',
+        leadId,
+        callId,
+        phoneNumber: dialTarget,
+        fromExtension: overrides.sip,
+        overrides,
+      }),
+    })
+      .catch(() => {})
+      .finally(() => setZadarmaDialing(false));
   };
 
   // In device or zadarma mode, check if we're calling or idle
@@ -371,7 +451,7 @@ export default function CallDialer({
             callMode === 'device'
               ? styles.statusReady
               : callMode === 'zadarma'
-              ? (zadarmaReady ? styles.statusReady : styles.statusNotReady)
+              ? (zadarmaReady && zadarmaWidgetReady ? styles.statusReady : styles.statusNotReady)
               : deviceReady
               ? styles.statusReady
               : styles.statusNotReady
@@ -381,7 +461,9 @@ export default function CallDialer({
               ? 'Volunteer Phone (Free)'
               : callMode === 'zadarma'
               ? zadarmaReady
-                ? `Zadarma Ready${zadarmaBalance !== null ? ` (${zadarmaBalance} ${zadarmaCurrency})` : ''}`
+                ? zadarmaWidgetReady
+                  ? `Zadarma Ready${zadarmaBalance !== null ? ` (${zadarmaBalance} ${zadarmaCurrency})` : ''}`
+                  : 'Loading Audio...'
                 : 'Zadarma (SIP / API)'
               : deviceReady
               ? 'Twilio Ready'
@@ -477,24 +559,28 @@ export default function CallDialer({
                   type="button"
                   className={`btn btn-success ${styles.dialBtn}`}
                   onClick={handleZadarmaStartCall}
-                  disabled={!hasLead || zadarmaDialing}
+                  disabled={!hasLead || zadarmaDialing || (zadarmaReady && !zadarmaWidgetReady)}
                   style={{
                     background: 'linear-gradient(135deg, #10b981, #059669)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
-                  aria-label="Call attendee via Zadarma Click-to-Call"
+                  aria-label="Call attendee via Zadarma Browser Audio"
                 >
                   <span className={styles.btnIcon}>🟢</span>
                   <span>
-                    {zadarmaDialing ? 'Connecting Zadarma...' : 'Call via Zadarma (Click-to-Call)'}
+                    {zadarmaReady && !zadarmaWidgetReady
+                      ? '⏳ Loading Zadarma Audio...'
+                      : zadarmaDialing
+                      ? 'Dialing via Zadarma...'
+                      : 'Call via Zadarma (Browser Audio)'}
                   </span>
                 </button>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                   <a
-                    href={phoneNumber ? `sip:${smsPhone || phoneNumber}` : '#'}
+                    href={phoneNumber ? `sip:${toZadarmaE164(phoneNumber)}` : '#'}
                     className="btn btn-secondary btn-sm"
                     onClick={onDeviceCallStarted}
                     style={{
