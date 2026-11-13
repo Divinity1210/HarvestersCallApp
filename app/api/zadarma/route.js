@@ -4,9 +4,10 @@ import { getSessionUser } from '@/lib/auth';
 import {
   callZadarmaApi,
   fetchZadarmaRecordingUrl,
-  getZadarmaConfig,
   getZadarmaWebRtcKey,
   normalizeZadarmaPhone,
+  resolveZadarmaConfig,
+  saveZadarmaDbConfig,
   triggerZadarmaCallback,
 } from '@/lib/zadarma';
 import { processCallRecording } from '@/lib/ai/callAnalysis';
@@ -25,7 +26,7 @@ function pickAgentExtension(userId) {
 
 /**
  * GET /api/zadarma
- * Returns Zadarma configuration status and optional WebRTC key / balance if server env vars are set.
+ * Returns Zadarma configuration status, WebRTC key, and balance (loaded from Neon DB or env vars).
  */
 export async function GET() {
   try {
@@ -35,18 +36,21 @@ export async function GET() {
     }
 
     const assignedSip = pickAgentExtension(session.id);
-    const cfg = getZadarmaConfig({ sip: assignedSip });
+    const cfg = await resolveZadarmaConfig({ sip: assignedSip });
     if (!cfg.configured) {
       return NextResponse.json({
         configured: false,
         serverConfigured: false,
-        sip: cfg.sip || '604556-100',
+        sip: assignedSip,
+        error:
+          'Zadarma API Key needs to be refreshed. Open ⚙️ Zadarma Setup once and paste your Key & Secret from my.zadarma.com/marketplace/#tab-apiKeys (saved automatically for all volunteers).',
       });
     }
 
     let balance = null;
     let currency = '';
     let webrtcKey = null;
+    let authError = '';
 
     try {
       const balRes = await callZadarmaApi('/v1/info/balance/', {}, 'GET');
@@ -54,19 +58,37 @@ export async function GET() {
         balance = balRes.balance;
         currency = balRes.currency || 'GBP';
       }
-    } catch {}
+    } catch (e) {
+      authError = e.message || 'Zadarma API authentication failed';
+    }
 
     try {
-      const keyRes = await getZadarmaWebRtcKey(cfg.webrtcSip || cfg.sip);
+      const keyRes = await getZadarmaWebRtcKey(assignedSip);
       if (keyRes?.status === 'success' && keyRes.key) {
         webrtcKey = keyRes.key;
       }
-    } catch {}
+    } catch (e) {
+      if (!authError) authError = e.message || 'Could not generate Zadarma WebRTC key';
+    }
+
+    if (!webrtcKey) {
+      return NextResponse.json({
+        configured: false,
+        serverConfigured: false,
+        sip: assignedSip,
+        balance,
+        currency,
+        webrtcKey: null,
+        error:
+          authError ||
+          'Zadarma could not issue a WebRTC audio key. Please paste a fresh API Key & Secret in ⚙️ Zadarma Setup.',
+      });
+    }
 
     return NextResponse.json({
       configured: true,
       serverConfigured: true,
-      sip: cfg.webrtcSip || cfg.sip,
+      sip: assignedSip,
       balance,
       currency,
       webrtcKey,
@@ -80,7 +102,7 @@ export async function GET() {
 /**
  * POST /api/zadarma
  * Actions:
- * - { action: 'status', overrides } -> validates credentials, fetches balance + WebRTC key
+ * - { action: 'status', overrides } -> validates credentials, saves to Neon DB for all agents, fetches balance + WebRTC key
  * - { action: 'call', leadId, callId, phoneNumber, fromExtension, overrides } -> triggers Zadarma click-to-call
  */
 export async function POST(request) {
@@ -100,29 +122,55 @@ export async function POST(request) {
       overrides = {},
     } = body;
 
-    const cfg = getZadarmaConfig(overrides);
+    const assignedSip = pickAgentExtension(session.id);
+    const cfg = await resolveZadarmaConfig({
+      ...overrides,
+      sip: fromExtension || overrides.sip || assignedSip,
+    });
 
     if (action === 'status') {
       if (!cfg.configured) {
         return NextResponse.json({
           configured: false,
-          error: 'Zadarma API Key and Secret are required.',
+          error:
+            'Zadarma API Key and Secret are required. Paste your active Key & Secret from my.zadarma.com/marketplace/#tab-apiKeys.',
         });
       }
 
       const balRes = await callZadarmaApi('/v1/info/balance/', {}, 'GET', overrides);
-      let webrtcKey = null;
-      try {
-        const keyRes = await getZadarmaWebRtcKey(fromExtension || cfg.sip, overrides);
-        if (keyRes?.key) webrtcKey = keyRes.key;
-      } catch {}
+      const targetSip = cfg.webrtcSip || assignedSip;
+      const keyRes = await getZadarmaWebRtcKey(targetSip, overrides);
+      const webrtcKey = keyRes?.key || null;
 
-      const effCfg = getZadarmaConfig({ ...overrides, sip: fromExtension || cfg.sip });
+      if (!webrtcKey) {
+        return NextResponse.json(
+          {
+            configured: false,
+            error:
+              'Zadarma API verified, but WebRTC key was empty. Ensure extension ' +
+              targetSip +
+              ' exists in My PBX -> Extensions.',
+          },
+          { status: 400 }
+        );
+      }
+
+      // Persist valid credentials centrally in Neon PostgreSQL so ALL volunteers immediately work!
+      if (overrides.apiKey && overrides.apiSecret) {
+        await saveZadarmaDbConfig({
+          apiKey: cfg.apiKey,
+          apiSecret: cfg.apiSecret,
+          pbxId: cfg.pbxId,
+          callerId: cfg.callerId,
+          sip: targetSip,
+        }).catch(err => console.warn('Could not persist zadarma_config to DB:', err));
+      }
+
       return NextResponse.json({
         configured: true,
-        sip: effCfg.webrtcSip || effCfg.sip,
+        sip: targetSip,
         balance: balRes?.balance ?? null,
-        currency: balRes?.currency || 'USD',
+        currency: balRes?.currency || 'GBP',
         webrtcKey,
       });
     }

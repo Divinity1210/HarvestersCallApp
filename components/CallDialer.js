@@ -173,10 +173,15 @@ export default function CallDialer({
       const saved = localStorage.getItem('harvesters_zadarma_cfg');
       if (saved) {
         const parsed = JSON.parse(saved);
-        localOverrides = parsed;
-        if (parsed.apiKey) setZadarmaApiKey(parsed.apiKey);
-        if (parsed.apiSecret) setZadarmaApiSecret(parsed.apiSecret);
-        if (parsed.sip) setZadarmaSip(parsed.sip);
+        // Clear previously invalidated public key if cached in browser localStorage
+        if (parsed.apiKey === 'e0adca9244d09e432768') {
+          localStorage.removeItem('harvesters_zadarma_cfg');
+        } else {
+          localOverrides = parsed;
+          if (parsed.apiKey) setZadarmaApiKey(parsed.apiKey);
+          if (parsed.apiSecret) setZadarmaApiSecret(parsed.apiSecret);
+          if (parsed.sip) setZadarmaSip(parsed.sip);
+        }
       }
     } catch {}
 
@@ -194,19 +199,25 @@ export default function CallDialer({
             })
           : await fetch('/api/zadarma');
         const data = await res.json();
-        if (data?.configured) {
+        if (data?.configured && data?.webrtcKey) {
+          setZadarmaError('');
           setZadarmaReady(true);
           setZadarmaBalance(data.balance);
           setZadarmaCurrency(data.currency || 'GBP');
           if (data.sip && !localOverrides.sip) setZadarmaSip(data.sip);
-          if (data.webrtcKey) {
-            loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || localOverrides.sip || '604556-100');
-          }
+          loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || localOverrides.sip || '604556-100');
         } else {
           setZadarmaReady(false);
+          setZadarmaWidgetReady(false);
+          if (data?.error) {
+            setZadarmaError(data.error);
+            setShowZadarmaSettings(true);
+          }
         }
-      } catch {
+      } catch (err) {
         setZadarmaReady(false);
+        setZadarmaWidgetReady(false);
+        setZadarmaError(err.message || 'Could not reach Zadarma server');
       }
     };
 
@@ -248,69 +259,111 @@ export default function CallDialer({
     return () => clearInterval(interval);
   }, [callMode, deviceCalling, attendeeName, phoneNumber, smsPhone]);
 
-  const loadZadarmaWebRtcWidget = (webrtcKey, sipExt) => {
+  const loadZadarmaWebRtcWidget = async (webrtcKey, sipExt) => {
     if (typeof window === 'undefined' || !webrtcKey || !sipExt) return;
-    let attempts = 0;
-    const waitAndInit = () => {
-      attempts += 1;
-      const depsReady =
-        typeof window.zadarmaWidgetFn === 'function' &&
-        typeof window.zdrmWebrtcPhoneInterface === 'function' &&
-        typeof window.ZadarmaWebphoneAPI === 'function' &&
-        typeof window.JsSIP !== 'undefined';
 
-      if (depsReady) {
-        if (!window.zdrmWPhI) {
-          try {
-            window.zadarmaWidgetFn(
-              webrtcKey,
-              sipExt,
-              'square',
-              'en',
-              true,
-              { right: '16px', bottom: '16px' }
-            );
-          } catch (e) {
-            console.warn('Zadarma widget init warning:', e);
-          }
-        }
-        // Poll briefly until zdrmWPhI finishes constructing its DOM input
-        let domChecks = 0;
-        const waitDom = () => {
-          domChecks += 1;
-          if (window.zdrmWPhI && document.getElementById('zdrm-webphone-phonenumber-input')) {
-            setZadarmaWidgetReady(true);
-            return;
-          }
-          if (domChecks < 30) setTimeout(waitDom, 150);
-        };
-        waitDom();
-        return;
-      }
+    // 1. Inject Zadarma WebRTC hidden media elements into their own dedicated container
+    // (avoids Zadarma's loader-phone-lib.js innerHTML bug that cancels <script> downloads on 4G mobile!)
+    if (!document.getElementById('zdrm-voice-media-root')) {
+      const styleLink = document.createElement('link');
+      styleLink.rel = 'stylesheet';
+      styleLink.type = 'text/css';
+      styleLink.href = 'https://my.zadarma.com/webphoneWebRTCWidget/v9/css/style.min.css?sub_v=1.1';
+      document.head.appendChild(styleLink);
 
-      if (attempts < 60) {
-        setTimeout(waitAndInit, 150);
-      }
-    };
-
-    if (document.getElementById('zadarma-webrtc-lib')) {
-      waitAndInit();
-      return;
+      const mediaRoot = document.createElement('div');
+      mediaRoot.id = 'zdrm-voice-media-root';
+      mediaRoot.innerHTML =
+        '<video id="zdrm-webRTCSelfView" autoplay playsinline controls style="display:none"></video>' +
+        '<video id="zdrm-webRTCRemoteView" autoplay playsinline controls style="visibility:hidden;position:fixed;z-index:-2;width:1px;height:1px;left:0;top:0;display:none"></video>' +
+        '<audio id="zdrm-incomingRing" style="display:none" controls src="https://my.zadarma.com/assets/incoming-call.mp3" preload="auto"></audio>' +
+        '<audio id="zdrm-outgoingRing" style="display:none" controls src="https://my.zadarma.com/assets/out.wav" preload="auto"></audio>' +
+        '<audio id="zdrm-busy" style="display:none" controls src="https://my.zadarma.com/assets/busy.wav" preload="auto"></audio>' +
+        '<audio id="zdrm-hangup" style="display:none" controls src="https://my.zadarma.com/assets/hangup.wav" preload="auto"></audio>' +
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]
+          .map(
+            d =>
+              `<audio id="zdrm-dtmf${d}" style="display:none" controls src="https://my.zadarma.com/assets/dtmf-${d}.wav" preload="auto"></audio>`
+          )
+          .join('');
+      document.body.appendChild(mediaRoot);
     }
 
-    const s1 = document.createElement('script');
-    s1.id = 'zadarma-webrtc-lib';
-    s1.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/loader-phone-lib.js?sub_v=3';
-    s1.async = true;
-    s1.onload = () => {
-      const s2 = document.createElement('script');
-      s2.id = 'zadarma-webrtc-fn';
-      s2.src = 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/loader-phone-fn.js?sub_v=2';
-      s2.async = true;
-      s2.onload = waitAndInit;
-      document.body.appendChild(s2);
-    };
-    document.body.appendChild(s1);
+    const loadScriptOnce = (id, src) =>
+      new Promise((resolve, reject) => {
+        const existing = document.getElementById(id);
+        if (existing && existing.dataset.loaded === '1') {
+          resolve();
+          return;
+        }
+        if (existing) {
+          existing.addEventListener('load', () => resolve(), { once: true });
+          existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), {
+            once: true,
+          });
+          return;
+        }
+        const s = document.createElement('script');
+        s.id = id;
+        s.src = src;
+        s.async = false;
+        s.onload = () => {
+          s.dataset.loaded = '1';
+          resolve();
+        };
+        s.onerror = () => reject(new Error(`Network blocked Zadarma audio script (${id})`));
+        document.body.appendChild(s);
+      });
+
+    try {
+      await Promise.all([
+        loadScriptOnce('zdrm-s-io', 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/socket.io.js'),
+        loadScriptOnce('zdrm-s-det', 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/detectWebRTC.min.js'),
+        loadScriptOnce('zdrm-s-sip', 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/jssip.min.js?v=2'),
+        loadScriptOnce('zdrm-s-md5', 'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/md5.min.js'),
+      ]);
+      await loadScriptOnce(
+        'zdrm-s-api',
+        'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/widget-api.min.js?sub_v=1.3'
+      );
+      await loadScriptOnce(
+        'zdrm-s-wid',
+        'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/widget.min.js?sub_v=1.1'
+      );
+      await loadScriptOnce(
+        'zdrm-s-fn',
+        'https://my.zadarma.com/webphoneWebRTCWidget/v9/js/loader-phone-fn.js?sub_v=2'
+      );
+
+      if (!window.zdrmWPhI && typeof window.zadarmaWidgetFn === 'function') {
+        window.zadarmaWidgetFn(webrtcKey, sipExt, 'square', 'en', true, {
+          right: '16px',
+          bottom: '16px',
+        });
+      }
+
+      let domChecks = 0;
+      const waitDom = () => {
+        domChecks += 1;
+        if (window.zdrmWPhI && document.getElementById('zdrm-webphone-phonenumber-input')) {
+          setZadarmaWidgetReady(true);
+          return;
+        }
+        if (domChecks < 40) {
+          setTimeout(waitDom, 150);
+        } else {
+          setZadarmaReady(false);
+          setZadarmaError(
+            'Zadarma browser audio timed out on this network. Tap Reload or use 📲 Dial via Zadarma App (SIP).'
+          );
+        }
+      };
+      waitDom();
+    } catch (err) {
+      setZadarmaReady(false);
+      setZadarmaWidgetReady(false);
+      setZadarmaError(err.message || 'Failed to load Zadarma browser audio scripts');
+    }
   };
 
   const handleSaveZadarmaSettings = async () => {
@@ -345,7 +398,9 @@ export default function CallDialer({
       if (data.webrtcKey) {
         loadZadarmaWebRtcWidget(data.webrtcKey, data.sip || overrides.sip);
       }
-      setZadarmaStatusMsg('✅ Zadarma connected & WebRTC widget ready!');
+      setZadarmaStatusMsg(
+        '✅ Saved to database! Zadarma WebRTC is now active for you and all volunteers!'
+      );
       setShowZadarmaSettings(false);
     } catch (err) {
       setZadarmaError(err.message);
