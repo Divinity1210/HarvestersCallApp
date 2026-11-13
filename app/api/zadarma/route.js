@@ -72,6 +72,7 @@ export async function GET() {
     }
 
     if (!webrtcKey) {
+      const isPendingVerification = /not authorized/i.test(authError || '');
       return NextResponse.json({
         configured: false,
         serverConfigured: false,
@@ -79,9 +80,11 @@ export async function GET() {
         balance,
         currency,
         webrtcKey: null,
-        error:
-          authError ||
-          'Zadarma could not issue a WebRTC audio key. Please paste a fresh API Key & Secret in ⚙️ Zadarma Setup.',
+        pendingVerification: isPendingVerification,
+        error: isPendingVerification
+          ? 'Zadarma account document verification is currently in review ("In verification" on Zadarma). Calls via Zadarma will resume automatically as soon as Zadarma approves your ID/card — please use 📱 SIM mode in the meantime.'
+          : authError ||
+            'Zadarma could not issue a WebRTC audio key. Check ⚙️ Zadarma Setup if you generated new API keys.',
       });
     }
 

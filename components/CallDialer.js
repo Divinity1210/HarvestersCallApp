@@ -173,15 +173,10 @@ export default function CallDialer({
       const saved = localStorage.getItem('harvesters_zadarma_cfg');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Clear previously invalidated public key if cached in browser localStorage
-        if (parsed.apiKey === 'e0adca9244d09e432768') {
-          localStorage.removeItem('harvesters_zadarma_cfg');
-        } else {
-          localOverrides = parsed;
-          if (parsed.apiKey) setZadarmaApiKey(parsed.apiKey);
-          if (parsed.apiSecret) setZadarmaApiSecret(parsed.apiSecret);
-          if (parsed.sip) setZadarmaSip(parsed.sip);
-        }
+        localOverrides = parsed;
+        if (parsed.apiKey) setZadarmaApiKey(parsed.apiKey);
+        if (parsed.apiSecret) setZadarmaApiSecret(parsed.apiSecret);
+        if (parsed.sip) setZadarmaSip(parsed.sip);
       }
     } catch {}
 
@@ -211,7 +206,9 @@ export default function CallDialer({
           setZadarmaWidgetReady(false);
           if (data?.error) {
             setZadarmaError(data.error);
-            setShowZadarmaSettings(true);
+            if (!data?.pendingVerification) {
+              setShowZadarmaSettings(true);
+            }
           }
         }
       } catch (err) {
