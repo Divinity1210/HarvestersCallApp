@@ -139,30 +139,30 @@ export default function AgentDashboard() {
   }, []);
 
   // Fetch agent stats
-  useEffect(() => {
-    const fetchStats = async () => {
-      if (!profile?.id) return;
-      try {
-        const res = await fetch('/api/agent/stats?period=today');
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.stats) {
-            setAgentStats({
-              callsToday: data.stats.totalCalls || 0,
-              completedToday: data.stats.completedCalls || 0,
-              avgDuration: data.stats.avgDuration || 0,
-            });
-          }
+  const fetchStats = useCallback(async () => {
+    if (!profile?.id) return;
+    try {
+      const res = await fetch('/api/agent/stats?period=today');
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.stats) {
+          setAgentStats({
+            callsToday: data.stats.totalCalls || 0,
+            completedToday: data.stats.completedCalls || 0,
+            avgDuration: data.stats.avgDuration || 0,
+          });
         }
-      } catch (err) {
-        console.error('Error fetching agent stats:', err);
       }
-    };
+    } catch (err) {
+      console.error('Error fetching agent stats:', err);
+    }
+  }, [profile?.id]);
 
+  useEffect(() => {
     fetchStats();
     const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
-  }, [profile?.id]);
+  }, [fetchStats]);
 
   // Clean up device timer on unmount & listen for mobile navbar callback shortcut
   useEffect(() => {
@@ -325,6 +325,22 @@ export default function AgentDashboard() {
       durationSeconds: (callMode === 'device' || callMode === 'zadarma') ? deviceDuration : call.callDuration,
     });
     if (success) {
+      const isConnectedOutcome =
+        !confirmedData.disposition ||
+        confirmedData.disposition === 'completed' ||
+        confirmedData.disposition === 'callback_requested';
+      setAgentStats(prev => ({
+        ...prev,
+        callsToday: (prev.callsToday || 0) + 1,
+        completedToday: (prev.completedToday || 0) + (isConnectedOutcome ? 1 : 0),
+      }));
+      setSelectedCampaign(prev =>
+        prev?.stats && typeof prev.stats.remaining === 'number'
+          ? { ...prev, stats: { ...prev.stats, remaining: Math.max(0, prev.stats.remaining - 1) } }
+          : prev
+      );
+      fetchStats();
+
       if (deviceTimerRef.current) {
         clearInterval(deviceTimerRef.current);
         deviceTimerRef.current = null;
@@ -360,6 +376,18 @@ export default function AgentDashboard() {
     }
     
     if (success) {
+      if (lead.currentCall?.id) {
+        setAgentStats(prev => ({
+          ...prev,
+          callsToday: (prev.callsToday || 0) + 1,
+        }));
+        setSelectedCampaign(prev =>
+          prev?.stats && typeof prev.stats.remaining === 'number'
+            ? { ...prev, stats: { ...prev.stats, remaining: Math.max(0, prev.stats.remaining - 1) } }
+            : prev
+        );
+        fetchStats();
+      }
       setShowResults(false);
       setInCallAnswers({});
       setInCallActions([]);

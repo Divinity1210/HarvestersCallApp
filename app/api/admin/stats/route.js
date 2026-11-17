@@ -21,10 +21,11 @@ export async function GET() {
     const callRows = await query(`
       SELECT 
         COUNT(*)::int as total_calls,
-        COUNT(*) FILTER (WHERE call_status = 'completed')::int as connected_calls,
-        COALESCE(AVG(duration_seconds) FILTER (WHERE call_status = 'completed'), 0)::int as avg_duration
+        COUNT(*) FILTER (WHERE call_status = 'completed' OR agent_disposition IN ('completed', 'callback_requested'))::int as connected_calls,
+        COALESCE(AVG(duration_seconds) FILTER (WHERE call_status = 'completed' OR agent_disposition IN ('completed', 'callback_requested')), 0)::int as avg_duration
       FROM calls
       WHERE created_at >= CURRENT_DATE
+        AND (call_status NOT IN ('initiating', 'canceled') OR agent_disposition IS NOT NULL)
     `);
     const calls = callRows[0] || {};
 

@@ -12,12 +12,14 @@ export async function GET() {
         u.id, 
         u.full_name as name,
         COUNT(c.id)::int as "totalCalls",
-        COUNT(c.id) FILTER (WHERE c.call_status = 'completed')::int as "connectedCalls",
-        COALESCE(SUM(c.duration_seconds) FILTER (WHERE c.call_status = 'completed'), 0)::int as "totalDuration",
-        COALESCE(AVG(c.duration_seconds) FILTER (WHERE c.call_status = 'completed'), 0)::int as "avgDuration",
+        COUNT(c.id) FILTER (WHERE c.call_status = 'completed' OR c.agent_disposition IN ('completed', 'callback_requested'))::int as "connectedCalls",
+        COALESCE(SUM(c.duration_seconds) FILTER (WHERE c.call_status = 'completed' OR c.agent_disposition IN ('completed', 'callback_requested')), 0)::int as "totalDuration",
+        COALESCE(AVG(c.duration_seconds) FILTER (WHERE c.call_status = 'completed' OR c.agent_disposition IN ('completed', 'callback_requested')), 0)::int as "avgDuration",
         COALESCE(AVG(qa.script_adherence_score), 0)::int as "avgScore"
       FROM users u
-      LEFT JOIN calls c ON c.agent_id = u.id AND c.created_at >= CURRENT_DATE
+      LEFT JOIN calls c ON c.agent_id = u.id
+        AND c.created_at >= CURRENT_DATE
+        AND (c.call_status NOT IN ('initiating', 'canceled') OR c.agent_disposition IS NOT NULL)
       LEFT JOIN qa_results qa ON qa.call_id = c.id
       WHERE u.role = 'agent' AND u.is_active = true
       GROUP BY u.id
