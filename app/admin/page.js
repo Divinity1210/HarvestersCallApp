@@ -19,6 +19,52 @@ export default function AdminDashboard() {
   });
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiInfo, setAiInfo] = useState(null);
+  const [groqInput, setGroqInput] = useState('');
+  const [geminiInput, setGeminiInput] = useState('');
+  const [aiSaving, setAiSaving] = useState(false);
+  const [aiMsg, setAiMsg] = useState('');
+  const [aiErr, setAiErr] = useState('');
+
+  const openAiSetup = async () => {
+    setShowAiModal(true);
+    setAiMsg('');
+    setAiErr('');
+    try {
+      const res = await fetch('/api/admin/ai-settings');
+      const data = await res.json();
+      if (res.ok) setAiInfo(data);
+    } catch {}
+  };
+
+  const handleSaveAiKeys = async () => {
+    setAiSaving(true);
+    setAiMsg('');
+    setAiErr('');
+    try {
+      const res = await fetch('/api/admin/ai-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groqKeys: groqInput,
+          geminiKeys: geminiInput,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save AI keys');
+      setAiInfo(data);
+      setGroqInput('');
+      setGeminiInput('');
+      setAiMsg(
+        `✅ Saved! Active pool: ${data.totalGroqKeys} Groq key(s) + ${data.totalGeminiKeys} Gemini key(s).`
+      );
+    } catch (err) {
+      setAiErr(err.message);
+    } finally {
+      setAiSaving(false);
+    }
+  };
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -68,6 +114,14 @@ export default function AdminDashboard() {
           <a href="/admin/calls" className="btn btn-secondary">
             📞 Call Logs
           </a>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={openAiSetup}
+            style={{ border: '1px solid rgba(16, 185, 129, 0.45)', color: '#6ee7b7' }}
+          >
+            🤖 Free AI Setup
+          </button>
           <div style={{ position: 'relative', display: 'inline-block' }}>
             <button
               className="btn btn-accent btn-sm"
@@ -224,6 +278,138 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+
+      {showAiModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.72)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px',
+          }}
+          onClick={() => setShowAiModal(false)}
+        >
+          <div
+            className="glass-card"
+            style={{
+              maxWidth: '540px',
+              width: '100%',
+              padding: '24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '18px' }}>🤖 Free AI Pool (Groq + Gemini)</h3>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowAiModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              Add free <strong>Groq</strong> and/or extra free <strong>Google AI Studio</strong> keys below.
+              The app automatically rotates across all keys and models for both{' '}
+              <strong>✨ Fill in with AI</strong> (0.3s via Groq) and <strong>Call Audio Scoring</strong>{' '}
+              (Gemini + Groq Whisper) so volunteers never hit rate limits.
+            </p>
+
+            {aiInfo && (
+              <div
+                style={{
+                  fontSize: '12px',
+                  padding: '10px 12px',
+                  borderRadius: '8px',
+                  background: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                }}
+              >
+                <strong>Currently Active Pool:</strong> {aiInfo.totalGroqKeys} Groq Key(s) •{' '}
+                {aiInfo.totalGeminiKeys} Gemini Key(s) (x2 models each ={' '}
+                {aiInfo.totalGeminiKeys * 1000 + aiInfo.totalGroqKeys * 2000}+ free calls/day)
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600 }}>
+                ⚡ Add Free Groq API Key(s) —{' '}
+                <a
+                  href="https://console.groq.com/keys"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#60a5fa', textDecoration: 'underline' }}
+                >
+                  Get free at console.groq.com/keys (No card needed)
+                </a>
+              </label>
+              <textarea
+                className="form-textarea"
+                rows={2}
+                placeholder="Paste one or more gsk_... keys (comma or newline separated)"
+                value={groqInput}
+                onChange={e => setGroqInput(e.target.value)}
+                style={{ fontSize: '12px' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600 }}>
+                ✨ Add Extra Free Google AI Studio Key(s) —{' '}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#60a5fa', textDecoration: 'underline' }}
+                >
+                  Get free at aistudio.google.com/apikey (New Project = +1,000/day)
+                </a>
+              </label>
+              <textarea
+                className="form-textarea"
+                rows={2}
+                placeholder="Paste one or more AIza... keys from separate Google projects"
+                value={geminiInput}
+                onChange={e => setGeminiInput(e.target.value)}
+                style={{ fontSize: '12px' }}
+              />
+            </div>
+
+            {aiMsg && (
+              <div style={{ fontSize: '12px', color: '#34d399', fontWeight: 600 }}>{aiMsg}</div>
+            )}
+            {aiErr && (
+              <div style={{ fontSize: '12px', color: '#fca5a5', fontWeight: 600 }}>⚠️ {aiErr}</div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setShowAiModal(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={aiSaving || (!groqInput.trim() && !geminiInput.trim())}
+                onClick={handleSaveAiKeys}
+              >
+                {aiSaving ? 'Verifying & Saving...' : '💾 Verify & Add to Free AI Pool'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
