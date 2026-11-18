@@ -48,22 +48,36 @@ export async function GET(request) {
     for (const r of rows) {
       const date = r.initiated_at ? new Date(r.initiated_at).toLocaleDateString() : '';
       const meta = r.lead_metadata || {};
-      const zone = meta.zone || meta.Zone || '';
-      const email = meta.email || meta.Email || '';
+      const zone = meta.zone || meta.Zone || meta.city || meta.City || '';
+      const email = meta.email || meta.Email || meta.email_address || '';
 
       const steps = Array.isArray(r.next_steps_confirmed)
         ? r.next_steps_confirmed
         : (typeof r.next_steps_confirmed === 'string' ? JSON.parse(r.next_steps_confirmed || '[]') : []);
 
       for (const step of steps) {
+        const rawStep = typeof step === 'string' ? step : step.step || step.name || JSON.stringify(step);
+        let questionOrStep = rawStep;
+        let commitmentValue = 'Yes';
+
+        if (typeof rawStep === 'string' && rawStep.includes('→')) {
+          const parts = rawStep.split('→');
+          questionOrStep = parts[0].trim();
+          commitmentValue = parts.slice(1).join('→').trim() || 'Yes';
+        } else if (typeof rawStep === 'string' && rawStep.includes('->')) {
+          const parts = rawStep.split('->');
+          questionOrStep = parts[0].trim();
+          commitmentValue = parts.slice(1).join('->').trim() || 'Yes';
+        }
+
         csvRows.push([
           date,
           csvEscape(r.lead_name || 'Unknown'),
           csvEscape(r.phone_number || ''),
           csvEscape(email),
           csvEscape(zone),
-          csvEscape(typeof step === 'string' ? step : step.step || step.name || JSON.stringify(step)),
-          'Yes',
+          csvEscape(questionOrStep),
+          csvEscape(commitmentValue),
           csvEscape(r.agent_name || 'Volunteer Caller'),
         ]);
       }
