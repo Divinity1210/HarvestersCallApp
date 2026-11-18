@@ -260,15 +260,16 @@ export default function CallDialer({
     if (typeof window === 'undefined' || !webrtcKey || !sipExt) return;
 
     // 1. Inject Zadarma WebRTC hidden media elements into their own dedicated container
-    // (avoids Zadarma's loader-phone-lib.js innerHTML bug that cancels <script> downloads on 4G mobile!)
-    if (!document.getElementById('zdrm-voice-media-root')) {
+    // and expose it as `window.ZDRMscriptDiv` (required by Zadarma's widget-api.min.js: `mainDiv = ZDRMscriptDiv`).
+    let mediaRoot = document.getElementById('zdrm-voice-media-root');
+    if (!mediaRoot) {
       const styleLink = document.createElement('link');
       styleLink.rel = 'stylesheet';
       styleLink.type = 'text/css';
       styleLink.href = 'https://my.zadarma.com/webphoneWebRTCWidget/v9/css/style.min.css?sub_v=1.1';
       document.head.appendChild(styleLink);
 
-      const mediaRoot = document.createElement('div');
+      mediaRoot = document.createElement('div');
       mediaRoot.id = 'zdrm-voice-media-root';
       mediaRoot.innerHTML =
         '<video id="zdrm-webRTCSelfView" autoplay playsinline controls style="display:none"></video>' +
@@ -285,6 +286,7 @@ export default function CallDialer({
           .join('');
       document.body.appendChild(mediaRoot);
     }
+    window.ZDRMscriptDiv = mediaRoot;
 
     const loadScriptOnce = (id, src) =>
       new Promise((resolve, reject) => {
