@@ -6,7 +6,7 @@ import {
   DEFAULT_EMAIL_SUBJECT,
   DEFAULT_EMAIL_TEMPLATE,
   extractLeadEmail,
-  getEmailProviderConfig,
+  getEmailProviderConfigAsync,
   renderEmailTemplate,
   sendCampaignEmail,
 } from '@/lib/email';
@@ -150,7 +150,7 @@ export async function GET(request, { params }) {
           metadata: { email: 'ojewande@example.com' },
         };
 
-    const providerCfg = getEmailProviderConfig();
+    const providerCfg = await getEmailProviderConfigAsync();
 
     return NextResponse.json({
       campaign: campaignRows[0],
