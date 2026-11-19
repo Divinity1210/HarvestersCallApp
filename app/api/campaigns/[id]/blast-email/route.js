@@ -11,6 +11,53 @@ import {
   sendCampaignEmail,
 } from '@/lib/email';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseCsvRows(csvText) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvText.length; i++) {
+    const ch = csvText[i];
+    if (ch === '"') {
+      if (inQuotes && csvText[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      row.push(cell);
+      cell = '';
+    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && csvText[i + 1] === '\n') i++;
+      row.push(cell);
+      if (row.some(c => c.trim() !== '')) rows.push(row);
+      row = [];
+      cell = '';
+    } else {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some(c => c.trim() !== '')) rows.push(row);
+  return rows;
+}
+
+function toGoogleSheetCsvUrl(rawUrl) {
+  const input = String(rawUrl || '').trim();
+  const idMatch = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!idMatch) {
+    throw new Error('Please paste a valid Google Sheets URL (e.g. https://docs.google.com/spreadsheets/d/...).');
+  }
+  const sheetId = idMatch[1];
+  const gidMatch = input.match(/[?&#]gid=(\d+)/);
+  const gid = gidMatch ? gidMatch[1] : '';
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
+}
+
 const EXCLUDED_BY_DEFAULT = ['wrong_number'];
 
 const SQL_HAS_EMAIL = `(
@@ -117,7 +164,7 @@ export async function GET(request, { params }) {
       sampleLead,
       providerStatus: {
         configured: providerCfg.configured,
-        provider: providerCfg.provider || 'resend',
+        provider: providerCfg.provider || 'sender',
         fromEmail: providerCfg.fromEmail,
         fromName: providerCfg.fromName,
         replyTo: providerCfg.replyTo,
@@ -140,6 +187,8 @@ export async function GET(request, { params }) {
  * POST /api/campaigns/[id]/blast-email
  * Actions:
  * - { action: 'test', testEmail, subjectTemplate, bodyTemplate, providerOverrides, sampleLead }
+ * - { action: 'load_sheet', sheetUrl }
+ * - { action: 'send_custom_batch', recipients, subjectTemplate, bodyTemplate, providerOverrides }
  * - { action: 'prepare', statuses, skipAlreadySent }
  * - { action: 'send_batch', leadIds, subjectTemplate, bodyTemplate, providerOverrides }
  */
@@ -157,6 +206,8 @@ export async function POST(request, { params }) {
       statuses = [],
       skipAlreadySent = true,
       leadIds = [],
+      sheetUrl = '',
+      recipients = [],
       subjectTemplate = '',
       bodyTemplate = '',
       providerOverrides = {},
@@ -169,6 +220,185 @@ export async function POST(request, { params }) {
       [id]
     );
     const campaignName = campaignRows[0]?.name || 'Next Level Prayers UK';
+
+    // 0a. Load & deduplicate recipients from a public Google Sheet URL
+    if (action === 'load_sheet') {
+      const csvUrl = toGoogleSheetCsvUrl(sheetUrl);
+      const sheetRes = await fetch(csvUrl, { redirect: 'follow' });
+      if (!sheetRes.ok) {
+        return NextResponse.json(
+          {
+            error: `Could not read Google Sheet (HTTP ${sheetRes.status}). Make sure sharing is set to "Anyone with the link can view".`,
+          },
+          { status: 400 }
+        );
+      }
+
+      const csvText = await sheetRes.text();
+      if (csvText.trim().startsWith('<!DOCTYPE html') || csvText.trim().startsWith('<html')) {
+        return NextResponse.json(
+          {
+            error: 'Google Sheet returned a login page instead of CSV. Set Google Sheet sharing to "Anyone with the link can view".',
+          },
+          { status: 400 }
+        );
+      }
+
+      const parsed = parseCsvRows(csvText);
+      if (parsed.length < 2) {
+        return NextResponse.json(
+          { error: 'Google Sheet appears to be empty (no data rows found).' },
+          { status: 400 }
+        );
+      }
+
+      const headerRow = parsed[0].map(h => h.trim().toLowerCase());
+      const emailIdx = headerRow.findIndex(h => h.includes('email') || h.includes('e-mail') || h === 'mail');
+      const nameIdx = headerRow.findIndex(h => h.includes('attendee') || h.includes('full name') || h === 'name' || h.includes('first name'));
+      const commIdx = headerRow.findIndex(h => h.includes('commitment') || h.includes('status') || h.includes('attending'));
+
+      const byEmail = new Map();
+      let missingEmails = 0;
+
+      for (let i = 1; i < parsed.length; i++) {
+        const cols = parsed[i];
+        let email = emailIdx >= 0 ? String(cols[emailIdx] || '').trim().toLowerCase() : '';
+        if (!EMAIL_REGEX.test(email)) {
+          // Fallback: scan row for any valid email cell
+          const found = cols.find(c => EMAIL_REGEX.test(String(c || '').trim().toLowerCase()));
+          email = found ? String(found).trim().toLowerCase() : '';
+        }
+
+        if (!email) {
+          missingEmails++;
+          continue;
+        }
+
+        const rawName = nameIdx >= 0 ? String(cols[nameIdx] || '').trim() : '';
+        const cleanName = rawName.replace(/[:;,]+$/, '').trim() || 'Friend';
+        const firstName = extractFirstName(cleanName) || 'Friend';
+        const commitment = commIdx >= 0 ? String(cols[commIdx] || '').trim() : '';
+
+        if (!byEmail.has(email)) {
+          byEmail.set(email, {
+            name: cleanName,
+            first_name: firstName,
+            email,
+            commitment: commitment || 'Unspecified',
+          });
+        } else {
+          const existing = byEmail.get(email);
+          if ((!existing.name || existing.name === 'Friend') && cleanName !== 'Friend') {
+            existing.name = cleanName;
+            existing.first_name = firstName;
+          }
+          // Prefer "Yes" if a contact appears on multiple rows
+          if (commitment.toLowerCase() === 'yes' && existing.commitment.toLowerCase() !== 'yes') {
+            existing.commitment = 'Yes';
+          }
+        }
+      }
+
+      const deduped = Array.from(byEmail.values());
+      const commitmentCounts = {};
+      for (const r of deduped) {
+        const key = r.commitment || 'Unspecified';
+        commitmentCounts[key] = (commitmentCounts[key] || 0) + 1;
+      }
+
+      return NextResponse.json({
+        success: true,
+        totalRows: parsed.length - 1,
+        missingEmails,
+        uniqueCount: deduped.length,
+        commitmentCounts,
+        recipients: deduped,
+      });
+    }
+
+    // 0b. Send a batch of custom Google Sheet recipients
+    if (action === 'send_custom_batch') {
+      if (!Array.isArray(recipients) || recipients.length === 0) {
+        return NextResponse.json(
+          { error: 'recipients array is required for send_custom_batch.' },
+          { status: 400 }
+        );
+      }
+      if (!bodyTemplate || !bodyTemplate.trim()) {
+        return NextResponse.json(
+          { error: 'Email body template is required.' },
+          { status: 400 }
+        );
+      }
+
+      const batch = recipients.slice(0, 30);
+      const senderLabel = session.full_name || session.email || 'Admin';
+      let sent = 0;
+      let failed = 0;
+      const sentEmails = [];
+      const errors = [];
+
+      const concurrency = 3;
+      for (let i = 0; i < batch.length; i += concurrency) {
+        const slice = batch.slice(i, i + concurrency);
+        await Promise.all(
+          slice.map(async (rec) => {
+            const emailAddr = String(rec.email || '').trim().toLowerCase();
+            if (!EMAIL_REGEX.test(emailAddr)) {
+              failed++;
+              errors.push({
+                name: rec.name || 'Unknown',
+                email: emailAddr || 'Missing',
+                error: 'Invalid email address',
+              });
+              return;
+            }
+
+            const leadObj = {
+              full_name: rec.name || 'Friend',
+              metadata: { email: emailAddr, first_name: rec.first_name || '' },
+            };
+
+            const personalizedSubject = renderEmailTemplate(
+              subjectTemplate || DEFAULT_EMAIL_SUBJECT,
+              leadObj,
+              { agentName: senderLabel, campaignName }
+            );
+            const personalizedBody = renderEmailTemplate(bodyTemplate, leadObj, {
+              agentName: senderLabel,
+              campaignName,
+            });
+
+            try {
+              await sendCampaignEmail({
+                to: emailAddr,
+                toName: rec.name || '',
+                subject: personalizedSubject,
+                bodyText: personalizedBody,
+                overrides: providerOverrides,
+              });
+              sent++;
+              sentEmails.push(emailAddr);
+            } catch (err) {
+              failed++;
+              errors.push({
+                name: rec.name || 'Unknown',
+                email: emailAddr,
+                error: err.message || 'Email send failed',
+              });
+            }
+          })
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        sent,
+        failed,
+        sentEmails,
+        errors,
+      });
+    }
 
     // 1. Send a single test email
     if (action === 'test') {

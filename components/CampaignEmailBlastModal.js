@@ -23,7 +23,62 @@ const UNREACHED_STATUSES = [
   'failed',
 ];
 
+const DEFAULT_GOOGLE_SHEET_URL =
+  'https://docs.google.com/spreadsheets/d/132u1ILAZjqcC1WcqbGFmko9WFAj3wVm3LIu25c0HPlY/edit?usp=sharing';
+
 const EMAIL_PRESETS = [
+  {
+    label: '🔥 2 Days To Go (Sheffield 21 Nov)',
+    subject: 'DEAR NLP FAMILY, THE COUNTDOWN IS ON! ❤️🔥',
+    body: `ONLY 2 DAYS TO GO!
+
+Dear {{first_name}},
+
+The wait is almost over! In just 48 hours, we will gather in Sheffield for NEXT LEVEL PRAYERS: NIGHT OF WORSHIP! 🙌🔥
+
+We are believing God for a powerful atmosphere of worship, answered prayers, supernatural encounters and life-changing testimonies.
+
+🎟️ IMPORTANT: HAVE YOU REGISTERED?
+
+Registration is essential for access to the event!
+
+Please note that this is a ticketed event with limited seating. You must register and secure your ticket to gain entry.
+
+Even if you previously confirmed your attendance through our call centre or before the date change, you still need to complete your registration.
+
+Don’t wait until the last minute!
+
+👉 REGISTER & SECURE YOUR TICKET NOW:
+https://bit.ly/4yZLImG
+
+📅 EVENT DETAILS
+NEXT LEVEL PRAYERS: NIGHT OF WORSHIP
+📅 Saturday, 21st November 2026
+🕑 Doors Open: 2:00 PM
+📍 The Hope Centre, Bernard Road, Sheffield, S2 5BQ
+
+❤️ ONE INVITATION COULD CHANGE A LIFE!
+
+Who are you bringing?
+
+A friend, a colleague, a neighbour or someone who needs a fresh encounter with God?
+
+Don’t keep this experience to yourself. Share the registration link and encourage them to secure their tickets too!
+
+Someone’s testimony could begin with your invitation.
+
+🙌 WE CAN’T WAIT TO SEE YOU!
+
+The countdown has begun, our hearts are expectant, and we believe God has something extraordinary in store for us.
+
+2 DAYS TO GO! ARE YOU READY? 🔥
+
+See you on Saturday!
+
+With love and prayers,
+The Next Level Prayers Team
+Night of Worship | Sheffield`,
+  },
   {
     label: '🎟️ Registration & Event Invite',
     subject: 'Your Personal Invitation & Registration: Next Level Prayers UK ({{first_name}})',
@@ -118,11 +173,20 @@ export default function CampaignEmailBlastModal({
   // Provider configuration
   const [serverConfigured, setServerConfigured] = useState(false);
   const [showProviderConfig, setShowProviderConfig] = useState(false);
-  const [provider, setProvider] = useState('resend');
+  const [provider, setProvider] = useState('sender');
   const [apiKey, setApiKey] = useState('');
   const [fromName, setFromName] = useState('Next Level Prayers UK');
   const [fromEmail, setFromEmail] = useState('');
   const [replyTo, setReplyTo] = useState('');
+
+  // Recipient source: 'campaign' (database) or 'sheet' (Google Sheet link)
+  const [recipientSource, setRecipientSource] = useState('campaign');
+  const [sheetUrl, setSheetUrl] = useState(DEFAULT_GOOGLE_SHEET_URL);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const [sheetError, setSheetError] = useState('');
+  const [sheetData, setSheetData] = useState(null);
+  const [sheetCommitmentFilter, setSheetCommitmentFilter] = useState('ALL');
+  const [sheetSentEmails, setSheetSentEmails] = useState({});
 
   // Blast settings
   const [selectedStatuses, setSelectedStatuses] = useState(ALL_VALID_STATUSES);
@@ -151,6 +215,11 @@ export default function CampaignEmailBlastModal({
   const stopRequestedRef = useRef(false);
   const pauseRequestedRef = useRef(false);
   const textareaRef = useRef(null);
+
+  const getSheetStorageKey = (url) => {
+    const m = String(url || '').match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    return `harvesters_sheet_sent_${m ? m[1] : 'custom'}`;
+  };
 
   useEffect(() => {
     if (!isOpen || !campaign?.id) return;
@@ -189,6 +258,46 @@ export default function CampaignEmailBlastModal({
     } catch {}
   };
 
+  const handleLoadGoogleSheet = async () => {
+    if (!sheetUrl.trim()) return;
+    setSheetLoading(true);
+    setSheetError('');
+    try {
+      const res = await fetch(`/api/campaigns/${campaign.id}/blast-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'load_sheet',
+          sheetUrl: sheetUrl.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load Google Sheet');
+
+      setSheetData(data);
+      setSheetCommitmentFilter('ALL');
+      if (data.recipients && data.recipients.length > 0) {
+        setSampleLead({
+          full_name: data.recipients[0].name,
+          first_name: data.recipients[0].first_name,
+          email: data.recipients[0].email,
+        });
+      }
+
+      // Restore previously sent emails for this sheet (safe resume)
+      try {
+        const saved = localStorage.getItem(getSheetStorageKey(sheetUrl));
+        setSheetSentEmails(saved ? JSON.parse(saved) : {});
+      } catch {
+        setSheetSentEmails({});
+      }
+    } catch (err) {
+      setSheetError(err.message || 'Failed to load Google Sheet');
+    } finally {
+      setSheetLoading(false);
+    }
+  };
+
   const loadCampaignEmailInfo = async () => {
     setLoadingInfo(true);
     setInfoError('');
@@ -213,7 +322,7 @@ export default function CampaignEmailBlastModal({
         if (!data.providerStatus.configured) {
           setShowProviderConfig(true);
         }
-        if (data.providerStatus.provider) {
+        if (data.providerStatus.configured && data.providerStatus.provider) {
           setProvider(prev => prev || data.providerStatus.provider);
         }
         if (data.providerStatus.fromName) {
@@ -239,11 +348,24 @@ export default function CampaignEmailBlastModal({
 
   if (!isOpen || !campaign) return null;
 
-  const matchingRecipientCount = selectedStatuses.reduce((sum, st) => {
-    const group = byStatus[st];
-    if (!group) return sum;
-    return sum + (skipAlreadySent ? group.notSent : group.total);
-  }, 0);
+  const filteredSheetRecipients = (sheetData?.recipients || []).filter(r => {
+    if (sheetCommitmentFilter !== 'ALL' && r.commitment !== sheetCommitmentFilter) {
+      return false;
+    }
+    if (skipAlreadySent && sheetSentEmails[r.email]) {
+      return false;
+    }
+    return true;
+  });
+
+  const matchingRecipientCount =
+    recipientSource === 'sheet'
+      ? filteredSheetRecipients.length
+      : selectedStatuses.reduce((sum, st) => {
+          const group = byStatus[st];
+          if (!group) return sum;
+          return sum + (skipAlreadySent ? group.notSent : group.total);
+        }, 0);
 
   const previewSubject = previewRender(subjectTemplate, sampleLead, campaign.name);
   const previewBody = previewRender(bodyTemplate, sampleLead, campaign.name);
@@ -320,8 +442,13 @@ export default function CampaignEmailBlastModal({
     if (matchingRecipientCount === 0 || !bodyTemplate.trim()) return;
     saveProviderToLocal(providerOverrides);
 
+    const targetLabel =
+      recipientSource === 'sheet'
+        ? `Google Sheet (${sheetCommitmentFilter === 'ALL' ? 'All unique emails' : sheetCommitmentFilter})`
+        : `"${campaign.name}"`;
+
     const confirmed = window.confirm(
-      `Ready to send ${matchingRecipientCount.toLocaleString()} emails to "${campaign.name}"?\n\nSubject: ${previewSubject}`
+      `Ready to send ${matchingRecipientCount.toLocaleString()} emails to ${targetLabel} via ${provider.toUpperCase()}?\n\nFrom: ${providerOverrides.fromName} <${providerOverrides.fromEmail || 'default'}>\nSubject: ${previewSubject}`
     );
     if (!confirmed) return;
 
@@ -333,6 +460,77 @@ export default function CampaignEmailBlastModal({
     pauseRequestedRef.current = false;
 
     try {
+      if (recipientSource === 'sheet') {
+        const targets = [...filteredSheetRecipients];
+        if (targets.length === 0) {
+          setBlastError('No matching recipients left to email in this Google Sheet.');
+          setBlasting(false);
+          return;
+        }
+
+        setProgress({
+          total: targets.length,
+          processed: 0,
+          sent: 0,
+          failed: 0,
+          errors: [],
+        });
+
+        const storageKey = getSheetStorageKey(sheetUrl);
+        let sentMap = { ...sheetSentEmails };
+        const batchSize = 25;
+
+        for (let i = 0; i < targets.length; i += batchSize) {
+          if (stopRequestedRef.current) break;
+
+          while (pauseRequestedRef.current && !stopRequestedRef.current) {
+            await new Promise(r => setTimeout(r, 400));
+          }
+          if (stopRequestedRef.current) break;
+
+          const batchRecipients = targets.slice(i, i + batchSize);
+          const batchRes = await fetch(`/api/campaigns/${campaign.id}/blast-email`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'send_custom_batch',
+              recipients: batchRecipients,
+              subjectTemplate,
+              bodyTemplate,
+              providerOverrides,
+            }),
+          });
+          const batchData = await batchRes.json();
+
+          if (!batchRes.ok) {
+            throw new Error(batchData.error || 'Batch email send error');
+          }
+
+          if (Array.isArray(batchData.sentEmails) && batchData.sentEmails.length > 0) {
+            const nowIso = new Date().toISOString();
+            for (const em of batchData.sentEmails) {
+              sentMap[em] = nowIso;
+            }
+            setSheetSentEmails({ ...sentMap });
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(sentMap));
+            } catch {}
+          }
+
+          setProgress(prev => ({
+            ...prev,
+            processed: prev.processed + batchRecipients.length,
+            sent: prev.sent + (batchData.sent || 0),
+            failed: prev.failed + (batchData.failed || 0),
+            errors: [...prev.errors, ...(batchData.errors || [])].slice(-50),
+          }));
+        }
+
+        setFinished(true);
+        if (onCompleted) onCompleted();
+        return;
+      }
+
       const prepRes = await fetch(`/api/campaigns/${campaign.id}/blast-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -362,7 +560,7 @@ export default function CampaignEmailBlastModal({
         errors: [],
       });
 
-      const batchSize = 50;
+      const batchSize = provider === 'sender' ? 25 : 50;
       for (let i = 0; i < leadIds.length; i += batchSize) {
         if (stopRequestedRef.current) break;
 
@@ -594,7 +792,7 @@ export default function CampaignEmailBlastModal({
                 }}
               >
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>
-                  🔑 Email Delivery Provider (Resend / Brevo){' '}
+                  🔑 Email Delivery Provider (Sender.net / Resend / Brevo){' '}
                   {serverConfigured || apiKey.trim() ? (
                     <span style={{ color: 'var(--color-success)', marginLeft: 6 }}>
                       ● Ready ({provider.toUpperCase()})
@@ -629,13 +827,18 @@ export default function CampaignEmailBlastModal({
                         onChange={e => setProvider(e.target.value)}
                         disabled={blasting}
                       >
-                        <option value="resend">Resend (Recommended • resend.com)</option>
-                        <option value="brevo">Brevo (brevo.com)</option>
+                        <option value="sender">Sender.net (Free 15k/mo • No daily cap • sender.net)</option>
+                        <option value="resend">Resend (100/day free • resend.com)</option>
+                        <option value="brevo">Brevo (300/day free • brevo.com)</option>
                       </select>
                     </div>
                     <div>
                       <label htmlFor="email-api-key" className="form-label" style={{ fontSize: 'var(--text-xs)' }}>
-                        {provider === 'brevo' ? 'Brevo API Key (xkeysib-...)' : 'Resend API Key (re_...)'}
+                        {provider === 'sender'
+                          ? 'Sender.net API Access Token'
+                          : provider === 'brevo'
+                          ? 'Brevo API Key (xkeysib-...)'
+                          : 'Resend API Key (re_...)'}
                       </label>
                       <input
                         id="email-api-key"
@@ -646,6 +849,8 @@ export default function CampaignEmailBlastModal({
                         placeholder={
                           serverConfigured
                             ? 'Using server environment variable (optional override)'
+                            : provider === 'sender'
+                            ? 'Paste API token from Sender.net → Settings → API access tokens'
                             : provider === 'brevo'
                             ? 'Paste xkeysib-... key'
                             : 'Paste re_... key from resend.com'
@@ -684,7 +889,13 @@ export default function CampaignEmailBlastModal({
                         className="form-input"
                         value={fromEmail}
                         onChange={e => setFromEmail(e.target.value)}
-                        placeholder={provider === 'resend' ? 'info@yourdomain.com (or onboarding@resend.dev)' : 'info@yourdomain.com'}
+                        placeholder={
+                          provider === 'sender'
+                            ? 'info@gramefdigitalagency.com'
+                            : provider === 'resend'
+                            ? 'info@yourdomain.com (or onboarding@resend.dev)'
+                            : 'info@yourdomain.com'
+                        }
                         autoComplete="email"
                         autoCorrect="off"
                         autoCapitalize="off"
@@ -702,7 +913,7 @@ export default function CampaignEmailBlastModal({
                         className="form-input"
                         value={replyTo}
                         onChange={e => setReplyTo(e.target.value)}
-                        placeholder="info@harvestersuk.org"
+                        placeholder="info@gramefdigitalagency.com"
                         autoComplete="email"
                         autoCorrect="off"
                         autoCapitalize="off"
@@ -712,13 +923,13 @@ export default function CampaignEmailBlastModal({
                     </div>
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                    💡 Tip: You can also set <code>RESEND_API_KEY</code> (or <code>BREVO_API_KEY</code>) and <code>EMAIL_FROM</code> in Vercel so it is permanently configured for all admins and agents.
+                    💡 Tip: You can also set <code>SENDER_API_KEY</code> (or <code>RESEND_API_KEY</code> / <code>BREVO_API_KEY</code>) and <code>EMAIL_FROM</code> in Vercel so it is permanently configured for all admins.
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Recipient Status Filter */}
+            {/* Recipient Status Filter / Google Sheet Source */}
             <div
               style={{
                 padding: 'var(--space-4)',
@@ -744,93 +955,191 @@ export default function CampaignEmailBlastModal({
                 <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                   <button
                     type="button"
-                    className="btn btn-secondary btn-sm"
+                    className={`btn btn-sm ${recipientSource === 'campaign' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
                     disabled={blasting}
-                    onClick={() =>
-                      setSelectedStatuses(
-                        ALL_VALID_STATUSES.filter(s => (byStatus[s]?.total || 0) > 0)
-                      )
-                    }
+                    onClick={() => setRecipientSource('campaign')}
                   >
-                    All with Email
+                    📋 Campaign Database
                   </button>
                   <button
                     type="button"
-                    className="btn btn-secondary btn-sm"
+                    className={`btn btn-sm ${recipientSource === 'sheet' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
                     disabled={blasting}
-                    onClick={() =>
-                      setSelectedStatuses(
-                        UNREACHED_STATUSES.filter(s => (byStatus[s]?.total || 0) > 0)
-                      )
-                    }
+                    onClick={() => setRecipientSource('sheet')}
                   >
-                    Unreached Only
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
-                    disabled={blasting}
-                    onClick={() =>
-                      setSelectedStatuses(
-                        ['pending'].filter(s => (byStatus[s]?.total || 0) > 0)
-                      )
-                    }
-                  >
-                    Pending Only
+                    📊 Google Sheet Link
                   </button>
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))',
-                  gap: 'var(--space-2)',
-                  marginBottom: 'var(--space-3)',
-                }}
-              >
-                {ALL_VALID_STATUSES.map(st => {
-                  const group = byStatus[st];
-                  if (!group || group.total === 0) return null;
-                  const checked = selectedStatuses.includes(st);
-                  const countToShow = skipAlreadySent ? group.notSent : group.total;
-                  return (
-                    <label
-                      key={st}
+              {recipientSource === 'sheet' ? (
+                <div style={{ marginBottom: 'var(--space-3)' }}>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
+                    <input
+                      type="url"
+                      className="form-input"
+                      style={{ flex: 1, minWidth: '240px', fontSize: 'var(--text-xs)' }}
+                      value={sheetUrl}
+                      onChange={e => setSheetUrl(e.target.value)}
+                      placeholder="Paste public Google Sheet link (Anyone with the link can view)"
+                      disabled={blasting || sheetLoading}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      disabled={blasting || sheetLoading || !sheetUrl.trim()}
+                      onClick={handleLoadGoogleSheet}
+                    >
+                      {sheetLoading ? 'Loading Sheet...' : '📥 Load Contacts'}
+                    </button>
+                  </div>
+
+                  {sheetError && (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger)', marginBottom: 'var(--space-2)' }}>
+                      ⚠️ {sheetError}
+                    </div>
+                  )}
+
+                  {sheetData && (
+                    <div
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 'var(--space-2)',
-                        padding: '8px 10px',
+                        padding: 'var(--space-3)',
                         borderRadius: 'var(--radius-sm)',
-                        background: checked ? 'rgba(59, 130, 246, 0.14)' : 'rgba(255,255,255,0.03)',
-                        border: checked
-                          ? '1px solid rgba(59, 130, 246, 0.45)'
-                          : '1px solid var(--border-subtle)',
-                        cursor: blasting ? 'not-allowed' : 'pointer',
+                        background: 'rgba(59, 130, 246, 0.08)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
                         fontSize: 'var(--text-xs)',
                       }}
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          checked={checked}
+                      <div style={{ marginBottom: 8, color: 'var(--text-primary)' }}>
+                        ✅ Loaded <strong>{sheetData.uniqueCount.toLocaleString()} unique valid emails</strong> (deduplicated from {sheetData.totalRows.toLocaleString()} rows; {sheetData.missingEmails} missing email)
+                        {Object.keys(sheetSentEmails).length > 0 && (
+                          <span style={{ color: 'var(--color-success)', marginLeft: 8 }}>
+                            • {Object.keys(sheetSentEmails).length.toLocaleString()} already sent in this browser
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>Filter:</span>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${sheetCommitmentFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ fontSize: '11px', padding: '3px 9px' }}
                           disabled={blasting}
-                          onChange={() => handleToggleStatus(st)}
-                        />
-                        <span>{outcomeLabel(st)}</span>
-                      </span>
-                      <strong style={{ color: 'var(--text-primary)' }}>
-                        {countToShow.toLocaleString()}
-                      </strong>
-                    </label>
-                  );
-                })}
-              </div>
+                          onClick={() => setSheetCommitmentFilter('ALL')}
+                        >
+                          All ({sheetData.uniqueCount.toLocaleString()})
+                        </button>
+                        {Object.entries(sheetData.commitmentCounts || {}).map(([label, cnt]) => (
+                          <button
+                            key={label}
+                            type="button"
+                            className={`btn btn-sm ${sheetCommitmentFilter === label ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ fontSize: '11px', padding: '3px 9px' }}
+                            disabled={blasting}
+                            onClick={() => setSheetCommitmentFilter(label)}
+                          >
+                            {label} ({cnt.toLocaleString()})
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
+                      disabled={blasting}
+                      onClick={() =>
+                        setSelectedStatuses(
+                          ALL_VALID_STATUSES.filter(s => (byStatus[s]?.total || 0) > 0)
+                        )
+                      }
+                    >
+                      All with Email
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
+                      disabled={blasting}
+                      onClick={() =>
+                        setSelectedStatuses(
+                          UNREACHED_STATUSES.filter(s => (byStatus[s]?.total || 0) > 0)
+                        )
+                      }
+                    >
+                      Unreached Only
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: 'var(--text-xs)', padding: '4px 10px' }}
+                      disabled={blasting}
+                      onClick={() =>
+                        setSelectedStatuses(
+                          ['pending'].filter(s => (byStatus[s]?.total || 0) > 0)
+                        )
+                      }
+                    >
+                      Pending Only
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(195px, 1fr))',
+                      gap: 'var(--space-2)',
+                      marginBottom: 'var(--space-3)',
+                    }}
+                  >
+                    {ALL_VALID_STATUSES.map(st => {
+                      const group = byStatus[st];
+                      if (!group || group.total === 0) return null;
+                      const checked = selectedStatuses.includes(st);
+                      const countToShow = skipAlreadySent ? group.notSent : group.total;
+                      return (
+                        <label
+                          key={st}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 'var(--space-2)',
+                            padding: '8px 10px',
+                            borderRadius: 'var(--radius-sm)',
+                            background: checked ? 'rgba(59, 130, 246, 0.14)' : 'rgba(255,255,255,0.03)',
+                            border: checked
+                              ? '1px solid rgba(59, 130, 246, 0.45)'
+                              : '1px solid var(--border-subtle)',
+                            cursor: blasting ? 'not-allowed' : 'pointer',
+                            fontSize: 'var(--text-xs)',
+                          }}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={blasting}
+                              onChange={() => handleToggleStatus(st)}
+                            />
+                            <span>{outcomeLabel(st)}</span>
+                          </span>
+                          <strong style={{ color: 'var(--text-primary)' }}>
+                            {countToShow.toLocaleString()}
+                          </strong>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
 
               <label
                 style={{
