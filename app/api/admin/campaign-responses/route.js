@@ -75,6 +75,10 @@ export async function GET(request) {
     let totalYesTransport = 0;
     let totalSMSSent = 0;
 
+    const hasExplicitAttendQuestion = groups.some(
+      g => g.type === 'question' && g.label.toLowerCase().includes('attend')
+    );
+
     answerRows.forEach(r => {
       const val = r.answer;
       answerCounts[val] = r.count;
@@ -83,16 +87,44 @@ export async function GET(request) {
       if (lower.includes('sms')) {
         totalSMSSent += r.count;
       }
-      if (lower.includes('attend') && lower.includes('yes')) {
+      if (hasExplicitAttendQuestion && lower.includes('attend') && lower.includes('yes')) {
         totalYesAttending += r.count;
       }
-      if (lower.includes('volunteer') && lower.includes('yes')) {
+      if ((lower.includes('volunteer') || lower.includes('serv')) && lower.includes('yes')) {
         totalYesVolunteer += r.count;
       }
       if ((lower.includes('bus') || lower.includes('transport')) && lower.includes('yes')) {
         totalYesTransport += r.count;
       }
     });
+
+    const effectiveNextStepsExpr = `
+      CASE 
+        WHEN qa.next_steps_confirmed IS NOT NULL AND jsonb_typeof(qa.next_steps_confirmed) = 'array' AND jsonb_array_length(qa.next_steps_confirmed) > 0 
+        THEN qa.next_steps_confirmed 
+        WHEN qa.next_steps_extracted IS NOT NULL AND jsonb_typeof(qa.next_steps_extracted) = 'array'
+        THEN qa.next_steps_extracted
+        ELSE '[]'::jsonb
+      END
+    `;
+
+    // For confirmation campaigns without an explicit "attend" question (e.g. "Have you registered?" / "Have you gotten your entry tickets?"),
+    // count distinct calls with a Yes confirmation so they aren't double-counted or shown as 0.
+    if (!hasExplicitAttendQuestion) {
+      const confirmedFallbackRes = await query(`
+        SELECT COUNT(*)::int as count
+        FROM qa_results qa
+        JOIN calls c ON c.id = qa.call_id
+        WHERE c.campaign_id = $1
+          AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
+            WHERE (elem.val ILIKE '%register%' OR elem.val ILIKE '%ticket%' OR elem.val ILIKE '%coming%')
+              AND elem.val ILIKE '%yes%'
+          )
+      `, [campaignId]);
+      totalYesAttending = confirmedFallbackRes[0]?.count || 0;
+    }
 
     // 3. Structure into questions & actions
     const questions = [];
@@ -153,15 +185,6 @@ export async function GET(request) {
 
     // 6. Attendee Feedback Feed (supports ?filter=volunteers, attending, transport, testimonies, all)
     const filter = searchParams.get('filter') || 'all';
-    const effectiveNextStepsExpr = `
-      CASE 
-        WHEN qa.next_steps_confirmed IS NOT NULL AND jsonb_typeof(qa.next_steps_confirmed) = 'array' AND jsonb_array_length(qa.next_steps_confirmed) > 0 
-        THEN qa.next_steps_confirmed 
-        WHEN qa.next_steps_extracted IS NOT NULL AND jsonb_typeof(qa.next_steps_extracted) = 'array'
-        THEN qa.next_steps_extracted
-        ELSE '[]'::jsonb
-      END
-    `;
 
     let feedbackCondition = `
       (
@@ -176,19 +199,28 @@ export async function GET(request) {
         EXISTS (
           SELECT 1
           FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
-          WHERE (elem.val ILIKE '%volunteer%' OR elem.val ILIKE '%serve%')
+          WHERE (elem.val ILIKE '%volunteer%' OR elem.val ILIKE '%serv%')
             AND elem.val ILIKE '%yes%'
         )
       `;
     } else if (filter === 'attending') {
-      feedbackCondition = `
-        EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
-          WHERE elem.val ILIKE '%attend%'
-            AND elem.val ILIKE '%yes%'
-        )
-      `;
+      feedbackCondition = hasExplicitAttendQuestion
+        ? `
+          EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
+            WHERE elem.val ILIKE '%attend%'
+              AND elem.val ILIKE '%yes%'
+          )
+        `
+        : `
+          EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(${effectiveNextStepsExpr}) AS elem(val)
+            WHERE (elem.val ILIKE '%register%' OR elem.val ILIKE '%ticket%' OR elem.val ILIKE '%coming%')
+              AND elem.val ILIKE '%yes%'
+          )
+        `;
     } else if (filter === 'transport') {
       feedbackCondition = `
         EXISTS (
